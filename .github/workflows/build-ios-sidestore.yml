@@ -32,35 +32,14 @@ jobs:
           cd ios
           pod install
 
-      - name: Detect Xcode workspace and scheme
-        id: xcode
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
-          if [ -z "$WORKSPACE" ]; then
-            echo "No .xcworkspace found in ios/"
-            exit 1
-          fi
-
-          SCHEME="$(xcodebuild -workspace "$WORKSPACE" -list -json \
-            | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["workspace"]["schemes"][0])')"
-
-          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
-          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-
-          echo "Workspace: $WORKSPACE"
-          echo "Scheme: $SCHEME"
-
       - name: Build unsigned iPhone app
         shell: bash
         run: |
           set -euo pipefail
 
           xcodebuild \
-            -workspace "${{ steps.xcode.outputs.workspace }}" \
-            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -workspace ios/LocalMusic.xcworkspace \
+            -scheme LocalMusic \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath "$PWD/build" \
