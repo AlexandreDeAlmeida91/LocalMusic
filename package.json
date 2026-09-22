@@ -1,0 +1,30 @@
+{
+  "name": "local-music-expo-v1",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "doctor": "npx expo-doctor",
+    "build:ios:preview": "eas build --platform ios --profile preview",
+    "build:ios:production": "eas build --platform ios --profile production"
+  },
+  "dependencies": {
+    "@react-native-community/slider": "5.2.0",
+    "expo": "~57.0.1",
+    "expo-asset": "~57.0.2",
+    "expo-audio": "~57.0.5",
+    "expo-document-picker": "~57.0.2",
+    "expo-file-system": "~57.0.7",
+    "expo-status-bar": "~57.0.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "babel-preset-expo": "~57.0.12"
+  }
+}

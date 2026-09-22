@@ -1,0 +1,100 @@
+name: Build iOS IPA for SideStore
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install JavaScript dependencies
+        run: npm install
+
+      - name: Check Expo project
+        run: npx expo-doctor
+
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios
+          pod install
+
+      - name: Detect Xcode workspace and scheme
+        id: xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WORKSPACE="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "No .xcworkspace found in ios/"
+            exit 1
+          fi
+
+          SCHEME="$(xcodebuild -workspace "$WORKSPACE" -list -json \
+            | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["workspace"]["schemes"][0])')"
+
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+
+      - name: Build unsigned iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          xcodebuild \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(find "$PWD/build/Build/Products/Release-iphoneos" -maxdepth 1 -name '*.app' -print -quit)"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app was produced."
+            exit 1
+          fi
+
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+
+          /usr/bin/zip -qry LocalMusic-unsigned.ipa Payload
+
+          echo "Created:"
+          ls -lh LocalMusic-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalMusic-iOS-IPA
+          path: LocalMusic-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

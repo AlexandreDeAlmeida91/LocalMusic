@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "LocalMusic",
+    "slug": "local-music",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.alexandre.localmusic"
+    },
+    "android": {
+      "package": "com.alexandre.localmusic"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "enableBackgroundPlayback": true,
+          "enableBackgroundRecording": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-document-picker"
+    ]
+  }
+}
