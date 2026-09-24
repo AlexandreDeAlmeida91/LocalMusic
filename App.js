@@ -16,6 +16,9 @@ import { MusicProvider, useMusic } from './src/context/MusicContext';
 import MiniPlayer from './src/components/MiniPlayer';
 import PlayerModal from './src/components/PlayerModal';
 import SongRow from './src/components/SongRow';
+import PlaybackModeBar from './src/components/PlaybackModeBar';
+import PlaylistArtwork from './src/components/PlaylistArtwork';
+import { ensurePlayer } from './src/services/player';
 
 function SegmentedControl({ value, onChange }) {
   return (
@@ -212,7 +215,9 @@ function LibraryScreen() {
     updatePlaylistSongs,
     removeSongFromPlaylist,
     songsForPlaylist,
-    playQueue
+    playQueue,
+    choosePlaylistCover,
+    clearPlaylistCover
   } = useMusic();
 
   const [tab, setTab] = useState('songs');
@@ -260,10 +265,26 @@ function LibraryScreen() {
   const playlistOptions = () => {
     if (!selectedPlaylist) return;
 
+    const imageActions = [
+      {
+        text: selectedPlaylist.coverUri ? 'Changer l’image' : 'Choisir une image',
+        onPress: () => choosePlaylistCover(selectedPlaylist.id)
+      }
+    ];
+
+    if (selectedPlaylist.coverUri) {
+      imageActions.push({
+        text: 'Retirer l’image',
+        style: 'destructive',
+        onPress: () => clearPlaylistCover(selectedPlaylist.id)
+      });
+    }
+
     Alert.alert(
       selectedPlaylist.name,
-      'Que veux-tu faire ?',
+      'Personnalise ta playlist.',
       [
+        ...imageActions,
         {
           text: 'Supprimer la playlist',
           style: 'destructive',
@@ -306,9 +327,13 @@ function LibraryScreen() {
       </View>
 
       <View style={styles.playlistHero}>
-        <View style={styles.playlistIconLarge}>
-          <Text style={styles.playlistIconTextLarge}>♫</Text>
-        </View>
+        <Pressable onPress={() => choosePlaylistCover(selectedPlaylist.id)}>
+          <PlaylistArtwork
+            uri={selectedPlaylist.coverUri}
+            size={100}
+            radius={22}
+          />
+        </Pressable>
 
         <View style={styles.playlistHeroText}>
           <Text style={styles.playlistTitle} numberOfLines={2}>
@@ -317,6 +342,9 @@ function LibraryScreen() {
           <Text style={styles.playlistCount}>
             {selectedPlaylistSongs.length} morceau
             {selectedPlaylistSongs.length > 1 ? 'x' : ''}
+          </Text>
+          <Text style={styles.coverHint}>
+            Touche l’image pour la personnaliser
           </Text>
         </View>
       </View>
@@ -342,6 +370,8 @@ function LibraryScreen() {
           <Text style={styles.manageButtonText}>+ Morceaux</Text>
         </Pressable>
       </View>
+
+      <PlaybackModeBar />
 
       {selectedPlaylistSongs.length === 0 ? (
         <View style={styles.center}>
@@ -413,6 +443,7 @@ function LibraryScreen() {
       </View>
 
       <SegmentedControl value={tab} onChange={setTab} />
+      <PlaybackModeBar />
 
       {loadingLibrary ? (
         <View style={styles.center}>
@@ -506,9 +537,7 @@ function LibraryScreen() {
                   pressed && styles.pressed
                 ]}
               >
-                <View style={styles.playlistIcon}>
-                  <Text style={styles.playlistIconText}>♫</Text>
-                </View>
+                <PlaylistArtwork uri={item.coverUri} />
 
                 <View style={styles.playlistRowText}>
                   <Text style={styles.playlistRowTitle} numberOfLines={1}>
@@ -573,6 +602,43 @@ function LibraryScreen() {
 }
 
 export default function App() {
+  const [ready, setReady] = React.useState(false);
+  const [bootError, setBootError] = React.useState(null);
+
+  React.useEffect(() => {
+    ensurePlayer()
+      .then(() => setReady(true))
+      .catch((error) => {
+        setBootError(
+          error?.message ||
+          'Impossible d’initialiser le lecteur audio.'
+        );
+      });
+  }, []);
+
+  if (!ready) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar barStyle="dark-content" />
+        <View style={styles.center}>
+          {bootError ? (
+            <>
+              <Text style={styles.emptyTitle}>Erreur audio</Text>
+              <Text style={styles.emptyText}>{bootError}</Text>
+            </>
+          ) : (
+            <>
+              <ActivityIndicator size="large" />
+              <Text style={styles.loadingText}>
+                Initialisation du lecteur…
+              </Text>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <MusicProvider>
       <LibraryScreen />
@@ -735,19 +801,6 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.58
   },
-  playlistIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: '#ece9ff',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  playlistIconText: {
-    fontSize: 27,
-    color: '#4b35d1',
-    fontWeight: '800'
-  },
   playlistRowText: {
     flex: 1
   },
@@ -801,19 +854,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 18
   },
-  playlistIconLarge: {
-    width: 100,
-    height: 100,
-    borderRadius: 22,
-    backgroundColor: '#ece9ff',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  playlistIconTextLarge: {
-    fontSize: 46,
-    color: '#4b35d1',
-    fontWeight: '800'
-  },
   playlistHeroText: {
     flex: 1
   },
@@ -827,6 +867,11 @@ const styles = StyleSheet.create({
     marginTop: 7,
     fontSize: 14,
     color: '#7a7a82'
+  },
+  coverHint: {
+    marginTop: 7,
+    fontSize: 11,
+    color: '#9a9aa1'
   },
   playlistActions: {
     paddingHorizontal: 18,

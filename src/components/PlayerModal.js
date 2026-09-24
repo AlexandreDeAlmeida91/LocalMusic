@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Artwork from './Artwork';
+import PlaybackModeBar from './PlaybackModeBar';
 import { useMusic } from '../context/MusicContext';
 
 function formatTime(seconds) {
@@ -148,6 +149,10 @@ export default function PlayerModal() {
             </Pressable>
           </View>
 
+          <View style={styles.modeWrap}>
+            <PlaybackModeBar compact />
+          </View>
+
           <View style={styles.volumeRow}>
             <Text style={styles.speaker}>🔈</Text>
             <Slider
@@ -280,6 +285,9 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '800',
     marginLeft: 2
+  },
+  modeWrap: {
+    marginTop: 24
   },
   volumeRow: {
     marginTop: 30,

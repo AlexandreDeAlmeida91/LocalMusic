@@ -18,8 +18,16 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          swift --version
+
       - name: Install JavaScript dependencies
         run: npm install
+
+      - name: Align Expo SDK 57 dependencies
+        run: npx expo install --fix
 
       - name: Check Expo project
         run: npx expo-doctor

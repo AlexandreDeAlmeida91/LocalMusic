@@ -8,10 +8,10 @@ import React, {
   useState
 } from 'react';
 import {
-  setAudioModeAsync,
-  useAudioPlaylist,
-  useAudioPlaylistStatus
-} from 'expo-audio';
+  useActiveMediaItem,
+  useIsPlaying,
+  useProgress
+} from '@rntp/player';
 import {
   deleteSongFile,
   loadLibrary,
@@ -19,59 +19,53 @@ import {
   saveLibrary
 } from '../services/library';
 import {
+  deletePlaylistCover,
   loadPlaylists,
+  pickPlaylistCover,
   savePlaylists
 } from '../services/playlists';
+import {
+  ensurePlayer,
+  nativeRepeatMode,
+  songToMediaItem,
+  TrackPlayer
+} from '../services/player';
 
 const MusicContext = createContext(null);
-
-function lockScreenMetadata(song) {
-  return {
-    title: song.title,
-    artist: song.artist,
-    albumTitle: song.album,
-    artworkUrl: song.artworkUri || undefined
-  };
-}
-
-function sameIds(a, b) {
-  if (a.length !== b.length) return false;
-  return a.every((id, index) => id === b[index]);
-}
 
 export function MusicProvider({ children }) {
   const [songs, setSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [currentSongId, setCurrentSongId] = useState(null);
+  const [playerReady, setPlayerReady] = useState(false);
   const [activeQueueName, setActiveQueueName] = useState('Bibliothèque');
+  const [shuffleEnabled, setShuffleEnabled] = useState(false);
+  const [repeatMode, setRepeatModeState] = useState('off');
   const [playerVisible, setPlayerVisible] = useState(false);
   const [volume, setVolumeState] = useState(1);
   const [error, setError] = useState(null);
 
-  const nativePlaylist = useAudioPlaylist({
-    sources: [],
-    loop: 'all',
-    updateInterval: 250
-  });
-  const status = useAudioPlaylistStatus(nativePlaylist);
+  const activeQueueIdsRef = useRef([]);
 
-  const queueIdsRef = useRef([]);
+  const activeMediaItem = useActiveMediaItem();
+  const isPlaying = useIsPlaying();
+  const progress = useProgress(0.5);
 
-  const currentSong = useMemo(
-    () => songs.find((song) => song.id === currentSongId) || null,
-    [songs, currentSongId]
-  );
+  const currentSong = useMemo(() => {
+    const id =
+      activeMediaItem?.mediaId ||
+      activeMediaItem?.extras?.localMusicSongId;
+
+    if (!id) return null;
+    return songs.find((song) => song.id === id) || null;
+  }, [activeMediaItem, songs]);
 
   useEffect(() => {
     (async () => {
       try {
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          shouldPlayInBackground: true,
-          interruptionMode: 'doNotMix'
-        });
+        await ensurePlayer();
+        setPlayerReady(true);
 
         const [storedSongs, storedPlaylists] = await Promise.all([
           loadLibrary(),
@@ -81,168 +75,202 @@ export function MusicProvider({ children }) {
         const validSongIds = new Set(storedSongs.map((song) => song.id));
         const cleanedPlaylists = storedPlaylists.map((playlist) => ({
           ...playlist,
-          songIds: (playlist.songIds || []).filter((id) => validSongIds.has(id))
+          songIds: (playlist.songIds || []).filter((id) =>
+            validSongIds.has(id)
+          )
         }));
 
         setSongs(storedSongs);
         setPlaylists(cleanedPlaylists);
 
-        if (JSON.stringify(cleanedPlaylists) !== JSON.stringify(storedPlaylists)) {
+        if (
+          JSON.stringify(cleanedPlaylists) !==
+          JSON.stringify(storedPlaylists)
+        ) {
           await savePlaylists(cleanedPlaylists);
         }
       } catch (e) {
-        setError(e?.message || 'Impossible de charger la bibliothèque.');
+        setError(
+          e?.message ||
+          'Impossible d’initialiser le lecteur audio natif.'
+        );
       } finally {
         setLoadingLibrary(false);
       }
     })();
   }, []);
 
-  useEffect(() => {
-    nativePlaylist.volume = volume;
-  }, [nativePlaylist, volume]);
+  const setNativeQueue = useCallback(
+    async (
+      queueSongs,
+      queueName,
+      startIndex = 0,
+      autoPlay = true
+    ) => {
+      await ensurePlayer();
 
-  const activateLockScreen = useCallback(
-    (song) => {
-      try {
-        nativePlaylist.setActiveForLockScreen(true, lockScreenMetadata(song));
-      } catch {
-        // Normal dans Expo Go ; le vrai build iOS dispose de ces contrôles.
-      }
-    },
-    [nativePlaylist]
-  );
-
-  const buildNativeQueue = useCallback(
-    (queueSongs, queueName = 'Bibliothèque') => {
       const validSongs = queueSongs.filter(Boolean);
-      const ids = validSongs.map((song) => song.id);
+      if (!validSongs.length) return;
 
-      nativePlaylist.clear();
+      const safeIndex = Math.max(
+        0,
+        Math.min(startIndex, validSongs.length - 1)
+      );
 
-      for (const song of validSongs) {
-        nativePlaylist.add({
-          uri: song.uri,
-          name: song.title
-        });
+      TrackPlayer.setMediaItems(
+        validSongs.map(songToMediaItem),
+        safeIndex
+      );
+
+      TrackPlayer.setShuffleEnabled(shuffleEnabled);
+      TrackPlayer.setRepeatMode(nativeRepeatMode(repeatMode));
+      TrackPlayer.setVolume(volume);
+
+      activeQueueIdsRef.current = validSongs.map((song) => song.id);
+      setActiveQueueName(queueName || 'Bibliothèque');
+
+      if (autoPlay) {
+        TrackPlayer.play();
       }
-
-      queueIdsRef.current = ids;
-      setActiveQueueName(queueName);
-
-      return validSongs;
     },
-    [nativePlaylist]
+    [repeatMode, shuffleEnabled, volume]
   );
-
-  useEffect(() => {
-    const index = status.currentIndex;
-    if (!Number.isInteger(index) || index < 0) return;
-
-    const songId = queueIdsRef.current[index];
-    if (!songId) return;
-
-    const song = songs.find((item) => item.id === songId);
-    if (!song) return;
-
-    if (song.id !== currentSongId) {
-      setCurrentSongId(song.id);
-    }
-
-    try {
-      nativePlaylist.updateLockScreenMetadata(lockScreenMetadata(song));
-    } catch {
-      // Pas critique pour la lecture.
-    }
-  }, [currentSongId, nativePlaylist, songs, status.currentIndex]);
 
   const playSong = useCallback(
-    (song, queueSongs = songs, openPlayer = false, queueName = 'Bibliothèque') => {
+    async (
+      song,
+      queueSongs = songs,
+      openPlayer = false,
+      queueName = 'Bibliothèque'
+    ) => {
       try {
-        const desiredIds = queueSongs.map((item) => item.id);
-        const queueChanged = !sameIds(queueIdsRef.current, desiredIds);
+        const index = queueSongs.findIndex(
+          (item) => item.id === song.id
+        );
 
-        if (queueChanged || nativePlaylist.trackCount !== desiredIds.length) {
-          buildNativeQueue(queueSongs, queueName);
-        } else {
-          setActiveQueueName(queueName);
-        }
-
-        const index = desiredIds.indexOf(song.id);
         if (index < 0) return;
 
-        setCurrentSongId(song.id);
-        nativePlaylist.skipTo(index);
-        activateLockScreen(song);
-        nativePlaylist.play();
+        await setNativeQueue(
+          queueSongs,
+          queueName,
+          index,
+          true
+        );
 
         if (openPlayer) setPlayerVisible(true);
       } catch (e) {
-        setError(e?.message || `Impossible de lire « ${song.title} ».`);
+        setError(
+          e?.message ||
+          `Impossible de lire « ${song.title} ».`
+        );
       }
     },
-    [activateLockScreen, buildNativeQueue, nativePlaylist, songs]
+    [setNativeQueue, songs]
   );
 
   const playQueue = useCallback(
-    (queueSongs, queueName = 'Playlist') => {
-      if (!queueSongs.length) return;
-
+    async (queueSongs, queueName = 'Playlist') => {
       try {
-        const built = buildNativeQueue(queueSongs, queueName);
-        if (!built.length) return;
-
-        const firstSong = built[0];
-        setCurrentSongId(firstSong.id);
-        nativePlaylist.skipTo(0);
-        activateLockScreen(firstSong);
-        nativePlaylist.play();
+        await setNativeQueue(queueSongs, queueName, 0, true);
       } catch (e) {
-        setError(e?.message || 'Impossible de démarrer cette playlist.');
+        setError(
+          e?.message ||
+          'Impossible de démarrer cette file de lecture.'
+        );
       }
     },
-    [activateLockScreen, buildNativeQueue, nativePlaylist]
+    [setNativeQueue]
   );
 
   const togglePlayPause = useCallback(() => {
-    if (!currentSong) return;
+    if (!playerReady || !currentSong) return;
 
     try {
-      if (status.playing) {
-        nativePlaylist.pause();
+      if (isPlaying) {
+        TrackPlayer.pause();
       } else {
-        activateLockScreen(currentSong);
-        nativePlaylist.play();
+        TrackPlayer.play();
       }
     } catch (e) {
-      setError(e?.message || 'Impossible de modifier la lecture.');
+      setError(
+        e?.message ||
+        'Impossible de modifier la lecture.'
+      );
     }
-  }, [activateLockScreen, currentSong, nativePlaylist, status.playing]);
+  }, [currentSong, isPlaying, playerReady]);
 
   const next = useCallback(() => {
-    if (!queueIdsRef.current.length) return;
+    if (!playerReady || !currentSong) return;
 
     try {
-      nativePlaylist.next();
-    } catch (e) {
-      setError(e?.message || 'Impossible de passer au morceau suivant.');
+      TrackPlayer.skipToNext();
+    } catch {
+      // Fin de file avec répétition désactivée.
     }
-  }, [nativePlaylist]);
+  }, [currentSong, playerReady]);
 
-  const previous = useCallback(async () => {
-    if (!queueIdsRef.current.length) return;
+  const previous = useCallback(() => {
+    if (!playerReady || !currentSong) return;
 
     try {
-      if ((status.currentTime || 0) > 3) {
-        await nativePlaylist.seekTo(0);
-        return;
+      if ((progress.position || 0) > 3) {
+        TrackPlayer.seekTo(0);
+      } else {
+        TrackPlayer.skipToPrevious();
       }
-
-      nativePlaylist.previous();
-    } catch (e) {
-      setError(e?.message || 'Impossible de revenir au morceau précédent.');
+    } catch {
+      TrackPlayer.seekTo(0);
     }
-  }, [nativePlaylist, status.currentTime]);
+  }, [currentSong, playerReady, progress.position]);
+
+  const seekTo = useCallback(
+    (seconds) => {
+      if (!playerReady) return;
+
+      try {
+        TrackPlayer.seekTo(seconds);
+      } catch {
+        // Ignore a seek while the player is transitioning.
+      }
+    },
+    [playerReady]
+  );
+
+  const setVolume = useCallback(
+    (value) => {
+      const nextVolume = Math.min(1, Math.max(0, value));
+      setVolumeState(nextVolume);
+
+      if (playerReady) {
+        TrackPlayer.setVolume(nextVolume);
+      }
+    },
+    [playerReady]
+  );
+
+  const toggleShuffle = useCallback(() => {
+    const nextValue = !shuffleEnabled;
+    setShuffleEnabled(nextValue);
+
+    if (playerReady) {
+      TrackPlayer.setShuffleEnabled(nextValue);
+    }
+  }, [playerReady, shuffleEnabled]);
+
+  const cycleRepeatMode = useCallback(() => {
+    const nextMode =
+      repeatMode === 'off'
+        ? 'all'
+        : repeatMode === 'all'
+          ? 'one'
+          : 'off';
+
+    setRepeatModeState(nextMode);
+
+    if (playerReady) {
+      TrackPlayer.setRepeatMode(nativeRepeatMode(nextMode));
+    }
+  }, [playerReady, repeatMode]);
 
   const importSongs = useCallback(async () => {
     setImporting(true);
@@ -253,13 +281,18 @@ export function MusicProvider({ children }) {
       if (!imported.length) return;
 
       const merged = [...songs, ...imported].sort((a, b) =>
-        a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' })
+        a.title.localeCompare(b.title, 'fr', {
+          sensitivity: 'base'
+        })
       );
 
       setSongs(merged);
       await saveLibrary(merged);
     } catch (e) {
-      setError(e?.message || 'Impossible d’importer les fichiers MP3.');
+      setError(
+        e?.message ||
+        'Impossible d’importer les fichiers MP3.'
+      );
     } finally {
       setImporting(false);
     }
@@ -268,36 +301,55 @@ export function MusicProvider({ children }) {
   const removeSong = useCallback(
     async (song) => {
       try {
-        const updatedSongs = songs.filter((item) => item.id !== song.id);
+        const updatedSongs = songs.filter(
+          (item) => item.id !== song.id
+        );
+
         const updatedPlaylists = playlists.map((playlist) => ({
           ...playlist,
-          songIds: playlist.songIds.filter((id) => id !== song.id),
+          songIds: playlist.songIds.filter(
+            (id) => id !== song.id
+          ),
           updatedAt: new Date().toISOString()
         }));
 
-        if (song.id === currentSongId) {
-          nativePlaylist.pause();
-          nativePlaylist.clearLockScreenControls();
-          nativePlaylist.clear();
-          queueIdsRef.current = [];
-          setCurrentSongId(null);
-        } else if (queueIdsRef.current.includes(song.id)) {
-          const remainingIds = queueIdsRef.current.filter((id) => id !== song.id);
-          const remainingSongs = remainingIds
-            .map((id) => updatedSongs.find((item) => item.id === id))
+        const queueContainedSong =
+          activeQueueIdsRef.current.includes(song.id);
+
+        if (queueContainedSong) {
+          const currentId = currentSong?.id || null;
+          const wasPlaying = isPlaying;
+
+          const remainingQueueIds =
+            activeQueueIdsRef.current.filter(
+              (id) => id !== song.id
+            );
+
+          const remainingSongs = remainingQueueIds
+            .map((id) =>
+              updatedSongs.find((item) => item.id === id)
+            )
             .filter(Boolean);
 
-          const wasPlaying = Boolean(status.playing);
-          const keepCurrentId = currentSongId;
+          if (!remainingSongs.length) {
+            TrackPlayer.pause();
+            TrackPlayer.clear();
+            activeQueueIdsRef.current = [];
+          } else {
+            let startIndex = currentId
+              ? remainingSongs.findIndex(
+                  (item) => item.id === currentId
+                )
+              : 0;
 
-          buildNativeQueue(remainingSongs, activeQueueName);
+            if (startIndex < 0) startIndex = 0;
 
-          if (keepCurrentId) {
-            const index = remainingSongs.findIndex((item) => item.id === keepCurrentId);
-            if (index >= 0) {
-              nativePlaylist.skipTo(index);
-              if (wasPlaying) nativePlaylist.play();
-            }
+            await setNativeQueue(
+              remainingSongs,
+              activeQueueName,
+              startIndex,
+              wasPlaying
+            );
           }
         }
 
@@ -310,17 +362,19 @@ export function MusicProvider({ children }) {
           deleteSongFile(song)
         ]);
       } catch (e) {
-        setError(e?.message || 'Impossible de supprimer ce morceau.');
+        setError(
+          e?.message ||
+          'Impossible de supprimer ce morceau.'
+        );
       }
     },
     [
       activeQueueName,
-      buildNativeQueue,
-      currentSongId,
-      nativePlaylist,
+      currentSong,
+      isPlaying,
       playlists,
-      songs,
-      status.playing
+      setNativeQueue,
+      songs
     ]
   );
 
@@ -335,7 +389,9 @@ export function MusicProvider({ children }) {
 
       if (
         playlists.some(
-          (playlist) => playlist.name.toLocaleLowerCase() === cleanedName.toLocaleLowerCase()
+          (playlist) =>
+            playlist.name.toLocaleLowerCase() ===
+            cleanedName.toLocaleLowerCase()
         )
       ) {
         setError('Une playlist porte déjà ce nom.');
@@ -344,15 +400,20 @@ export function MusicProvider({ children }) {
 
       const now = new Date().toISOString();
       const playlist = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        id: `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 10)}`,
         name: cleanedName,
         songIds: [],
+        coverUri: null,
         createdAt: now,
         updatedAt: now
       };
 
       const updated = [...playlists, playlist].sort((a, b) =>
-        a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+        a.name.localeCompare(b.name, 'fr', {
+          sensitivity: 'base'
+        })
       );
 
       setPlaylists(updated);
@@ -362,40 +423,35 @@ export function MusicProvider({ children }) {
     [playlists]
   );
 
-  const renamePlaylist = useCallback(
-    async (playlistId, name) => {
-      const cleanedName = name.trim();
-      if (!cleanedName) return;
-
-      const updated = playlists
-        .map((playlist) =>
-          playlist.id === playlistId
-            ? { ...playlist, name: cleanedName, updatedAt: new Date().toISOString() }
-            : playlist
-        )
-        .sort((a, b) =>
-          a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
-        );
-
-      setPlaylists(updated);
-      await savePlaylists(updated);
-    },
-    [playlists]
-  );
-
   const deletePlaylist = useCallback(
     async (playlistId) => {
-      const updated = playlists.filter((playlist) => playlist.id !== playlistId);
+      const playlist = playlists.find(
+        (item) => item.id === playlistId
+      );
+
+      const updated = playlists.filter(
+        (item) => item.id !== playlistId
+      );
+
       setPlaylists(updated);
-      await savePlaylists(updated);
+
+      await Promise.all([
+        savePlaylists(updated),
+        deletePlaylistCover(playlist?.coverUri)
+      ]);
     },
     [playlists]
   );
 
   const updatePlaylistSongs = useCallback(
     async (playlistId, songIds) => {
-      const validIds = new Set(songs.map((song) => song.id));
-      const uniqueIds = [...new Set(songIds)].filter((id) => validIds.has(id));
+      const validIds = new Set(
+        songs.map((song) => song.id)
+      );
+
+      const uniqueIds = [...new Set(songIds)].filter((id) =>
+        validIds.has(id)
+      );
 
       const updated = playlists.map((playlist) =>
         playlist.id === playlistId
@@ -415,7 +471,10 @@ export function MusicProvider({ children }) {
 
   const removeSongFromPlaylist = useCallback(
     async (playlistId, songId) => {
-      const playlist = playlists.find((item) => item.id === playlistId);
+      const playlist = playlists.find(
+        (item) => item.id === playlistId
+      );
+
       if (!playlist) return;
 
       await updatePlaylistSongs(
@@ -426,32 +485,82 @@ export function MusicProvider({ children }) {
     [playlists, updatePlaylistSongs]
   );
 
+  const choosePlaylistCover = useCallback(
+    async (playlistId) => {
+      const playlist = playlists.find(
+        (item) => item.id === playlistId
+      );
+
+      if (!playlist) return false;
+
+      try {
+        const coverUri = await pickPlaylistCover(
+          playlistId,
+          playlist.coverUri
+        );
+
+        if (!coverUri) return false;
+
+        const updated = playlists.map((item) =>
+          item.id === playlistId
+            ? {
+                ...item,
+                coverUri,
+                updatedAt: new Date().toISOString()
+              }
+            : item
+        );
+
+        setPlaylists(updated);
+        await savePlaylists(updated);
+        return true;
+      } catch (e) {
+        setError(
+          e?.message ||
+          'Impossible d’utiliser cette image.'
+        );
+        return false;
+      }
+    },
+    [playlists]
+  );
+
+  const clearPlaylistCover = useCallback(
+    async (playlistId) => {
+      const playlist = playlists.find(
+        (item) => item.id === playlistId
+      );
+
+      if (!playlist) return;
+
+      const updated = playlists.map((item) =>
+        item.id === playlistId
+          ? {
+              ...item,
+              coverUri: null,
+              updatedAt: new Date().toISOString()
+            }
+          : item
+      );
+
+      setPlaylists(updated);
+
+      await Promise.all([
+        savePlaylists(updated),
+        deletePlaylistCover(playlist.coverUri)
+      ]);
+    },
+    [playlists]
+  );
+
   const songsForPlaylist = useCallback(
     (playlist) =>
       (playlist?.songIds || [])
-        .map((id) => songs.find((song) => song.id === id))
+        .map((id) =>
+          songs.find((song) => song.id === id)
+        )
         .filter(Boolean),
     [songs]
-  );
-
-  const seekTo = useCallback(
-    async (seconds) => {
-      try {
-        await nativePlaylist.seekTo(seconds);
-      } catch {
-        // Ignore un seek pendant le chargement.
-      }
-    },
-    [nativePlaylist]
-  );
-
-  const setVolume = useCallback(
-    (value) => {
-      const nextVolume = Math.min(1, Math.max(0, value));
-      setVolumeState(nextVolume);
-      nativePlaylist.volume = nextVolume;
-    },
-    [nativePlaylist]
   );
 
   const value = {
@@ -464,11 +573,16 @@ export function MusicProvider({ children }) {
 
     currentSong,
     activeQueueName,
-    isPlaying: Boolean(status.playing),
-    currentTime: status.currentTime || 0,
-    duration: status.duration || 0,
-    isBuffering: Boolean(status.isBuffering),
+    isPlaying,
+    currentTime: progress.position || 0,
+    duration: progress.duration || 0,
+    buffered: progress.buffered || 0,
     volume,
+
+    shuffleEnabled,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeatMode,
 
     playerVisible,
     setPlayerVisible,
@@ -484,11 +598,12 @@ export function MusicProvider({ children }) {
     setVolume,
 
     createPlaylist,
-    renamePlaylist,
     deletePlaylist,
     updatePlaylistSongs,
     removeSongFromPlaylist,
-    songsForPlaylist
+    songsForPlaylist,
+    choosePlaylistCover,
+    clearPlaylistCover
   };
 
   return (
@@ -500,8 +615,12 @@ export function MusicProvider({ children }) {
 
 export function useMusic() {
   const context = useContext(MusicContext);
+
   if (!context) {
-    throw new Error('useMusic doit être utilisé dans MusicProvider.');
+    throw new Error(
+      'useMusic doit être utilisé dans MusicProvider.'
+    );
   }
+
   return context;
 }
