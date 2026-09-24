@@ -9,8 +9,8 @@ import React, {
 } from 'react';
 import {
   setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus
+  useAudioPlaylist,
+  useAudioPlaylistStatus
 } from 'expo-audio';
 import {
   deleteSongFile,
@@ -18,24 +18,46 @@ import {
   pickAndImportSongs,
   saveLibrary
 } from '../services/library';
+import {
+  loadPlaylists,
+  savePlaylists
+} from '../services/playlists';
 
 const MusicContext = createContext(null);
 
+function lockScreenMetadata(song) {
+  return {
+    title: song.title,
+    artist: song.artist,
+    albumTitle: song.album,
+    artworkUrl: song.artworkUri || undefined
+  };
+}
+
+function sameIds(a, b) {
+  if (a.length !== b.length) return false;
+  return a.every((id, index) => id === b[index]);
+}
+
 export function MusicProvider({ children }) {
   const [songs, setSongs] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [importing, setImporting] = useState(false);
   const [currentSongId, setCurrentSongId] = useState(null);
+  const [activeQueueName, setActiveQueueName] = useState('Bibliothèque');
   const [playerVisible, setPlayerVisible] = useState(false);
   const [volume, setVolumeState] = useState(1);
   const [error, setError] = useState(null);
 
-  const player = useAudioPlayer(null, {
-    updateInterval: 250,
-    downloadFirst: false
+  const nativePlaylist = useAudioPlaylist({
+    sources: [],
+    loop: 'all',
+    updateInterval: 250
   });
-  const status = useAudioPlayerStatus(player);
-  const finishHandledRef = useRef(false);
+  const status = useAudioPlaylistStatus(nativePlaylist);
+
+  const queueIdsRef = useRef([]);
 
   const currentSong = useMemo(
     () => songs.find((song) => song.id === currentSongId) || null,
@@ -51,8 +73,23 @@ export function MusicProvider({ children }) {
           interruptionMode: 'doNotMix'
         });
 
-        const stored = await loadLibrary();
-        setSongs(stored);
+        const [storedSongs, storedPlaylists] = await Promise.all([
+          loadLibrary(),
+          loadPlaylists()
+        ]);
+
+        const validSongIds = new Set(storedSongs.map((song) => song.id));
+        const cleanedPlaylists = storedPlaylists.map((playlist) => ({
+          ...playlist,
+          songIds: (playlist.songIds || []).filter((id) => validSongIds.has(id))
+        }));
+
+        setSongs(storedSongs);
+        setPlaylists(cleanedPlaylists);
+
+        if (JSON.stringify(cleanedPlaylists) !== JSON.stringify(storedPlaylists)) {
+          await savePlaylists(cleanedPlaylists);
+        }
       } catch (e) {
         setError(e?.message || 'Impossible de charger la bibliothèque.');
       } finally {
@@ -62,40 +99,109 @@ export function MusicProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    player.volume = volume;
-  }, [player, volume]);
+    nativePlaylist.volume = volume;
+  }, [nativePlaylist, volume]);
 
   const activateLockScreen = useCallback(
     (song) => {
       try {
-        player.setActiveForLockScreen(true, {
-          title: song.title,
-          artist: song.artist,
-          albumTitle: song.album,
-          artworkUrl: song.artworkUri || undefined
-        });
+        nativePlaylist.setActiveForLockScreen(true, lockScreenMetadata(song));
       } catch {
-        // Les contrôles système peuvent être indisponibles dans Expo Go.
+        // Normal dans Expo Go ; le vrai build iOS dispose de ces contrôles.
       }
     },
-    [player]
+    [nativePlaylist]
   );
 
+  const buildNativeQueue = useCallback(
+    (queueSongs, queueName = 'Bibliothèque') => {
+      const validSongs = queueSongs.filter(Boolean);
+      const ids = validSongs.map((song) => song.id);
+
+      nativePlaylist.clear();
+
+      for (const song of validSongs) {
+        nativePlaylist.add({
+          uri: song.uri,
+          name: song.title
+        });
+      }
+
+      queueIdsRef.current = ids;
+      setActiveQueueName(queueName);
+
+      return validSongs;
+    },
+    [nativePlaylist]
+  );
+
+  useEffect(() => {
+    const index = status.currentIndex;
+    if (!Number.isInteger(index) || index < 0) return;
+
+    const songId = queueIdsRef.current[index];
+    if (!songId) return;
+
+    const song = songs.find((item) => item.id === songId);
+    if (!song) return;
+
+    if (song.id !== currentSongId) {
+      setCurrentSongId(song.id);
+    }
+
+    try {
+      nativePlaylist.updateLockScreenMetadata(lockScreenMetadata(song));
+    } catch {
+      // Pas critique pour la lecture.
+    }
+  }, [currentSongId, nativePlaylist, songs, status.currentIndex]);
+
   const playSong = useCallback(
-    (song, openPlayer = false) => {
+    (song, queueSongs = songs, openPlayer = false, queueName = 'Bibliothèque') => {
       try {
-        finishHandledRef.current = false;
+        const desiredIds = queueSongs.map((item) => item.id);
+        const queueChanged = !sameIds(queueIdsRef.current, desiredIds);
+
+        if (queueChanged || nativePlaylist.trackCount !== desiredIds.length) {
+          buildNativeQueue(queueSongs, queueName);
+        } else {
+          setActiveQueueName(queueName);
+        }
+
+        const index = desiredIds.indexOf(song.id);
+        if (index < 0) return;
+
         setCurrentSongId(song.id);
-        player.replace(song.uri);
+        nativePlaylist.skipTo(index);
         activateLockScreen(song);
-        player.play();
+        nativePlaylist.play();
 
         if (openPlayer) setPlayerVisible(true);
       } catch (e) {
         setError(e?.message || `Impossible de lire « ${song.title} ».`);
       }
     },
-    [activateLockScreen, player]
+    [activateLockScreen, buildNativeQueue, nativePlaylist, songs]
+  );
+
+  const playQueue = useCallback(
+    (queueSongs, queueName = 'Playlist') => {
+      if (!queueSongs.length) return;
+
+      try {
+        const built = buildNativeQueue(queueSongs, queueName);
+        if (!built.length) return;
+
+        const firstSong = built[0];
+        setCurrentSongId(firstSong.id);
+        nativePlaylist.skipTo(0);
+        activateLockScreen(firstSong);
+        nativePlaylist.play();
+      } catch (e) {
+        setError(e?.message || 'Impossible de démarrer cette playlist.');
+      }
+    },
+    [activateLockScreen, buildNativeQueue, nativePlaylist]
   );
 
   const togglePlayPause = useCallback(() => {
@@ -103,51 +209,40 @@ export function MusicProvider({ children }) {
 
     try {
       if (status.playing) {
-        player.pause();
+        nativePlaylist.pause();
       } else {
         activateLockScreen(currentSong);
-        player.play();
+        nativePlaylist.play();
       }
     } catch (e) {
       setError(e?.message || 'Impossible de modifier la lecture.');
     }
-  }, [activateLockScreen, currentSong, player, status.playing]);
+  }, [activateLockScreen, currentSong, nativePlaylist, status.playing]);
 
   const next = useCallback(() => {
-    if (!songs.length) return;
+    if (!queueIdsRef.current.length) return;
 
-    const currentIndex = Math.max(
-      0,
-      songs.findIndex((song) => song.id === currentSongId)
-    );
-    const nextIndex = (currentIndex + 1) % songs.length;
-    playSong(songs[nextIndex]);
-  }, [currentSongId, playSong, songs]);
+    try {
+      nativePlaylist.next();
+    } catch (e) {
+      setError(e?.message || 'Impossible de passer au morceau suivant.');
+    }
+  }, [nativePlaylist]);
 
   const previous = useCallback(async () => {
-    if (!songs.length) return;
+    if (!queueIdsRef.current.length) return;
 
-    if ((status.currentTime || 0) > 3) {
-      await player.seekTo(0);
-      return;
+    try {
+      if ((status.currentTime || 0) > 3) {
+        await nativePlaylist.seekTo(0);
+        return;
+      }
+
+      nativePlaylist.previous();
+    } catch (e) {
+      setError(e?.message || 'Impossible de revenir au morceau précédent.');
     }
-
-    const foundIndex = songs.findIndex((song) => song.id === currentSongId);
-    const currentIndex = foundIndex < 0 ? 0 : foundIndex;
-    const previousIndex = (currentIndex - 1 + songs.length) % songs.length;
-    playSong(songs[previousIndex]);
-  }, [currentSongId, playSong, player, songs, status.currentTime]);
-
-  useEffect(() => {
-    if (status.didJustFinish && !finishHandledRef.current && currentSongId) {
-      finishHandledRef.current = true;
-      next();
-    }
-
-    if (!status.didJustFinish) {
-      finishHandledRef.current = false;
-    }
-  }, [currentSongId, next, status.didJustFinish]);
+  }, [nativePlaylist, status.currentTime]);
 
   const importSongs = useCallback(async () => {
     setImporting(true);
@@ -173,54 +268,202 @@ export function MusicProvider({ children }) {
   const removeSong = useCallback(
     async (song) => {
       try {
+        const updatedSongs = songs.filter((item) => item.id !== song.id);
+        const updatedPlaylists = playlists.map((playlist) => ({
+          ...playlist,
+          songIds: playlist.songIds.filter((id) => id !== song.id),
+          updatedAt: new Date().toISOString()
+        }));
+
         if (song.id === currentSongId) {
-          player.pause();
-          player.clearLockScreenControls();
+          nativePlaylist.pause();
+          nativePlaylist.clearLockScreenControls();
+          nativePlaylist.clear();
+          queueIdsRef.current = [];
           setCurrentSongId(null);
+        } else if (queueIdsRef.current.includes(song.id)) {
+          const remainingIds = queueIdsRef.current.filter((id) => id !== song.id);
+          const remainingSongs = remainingIds
+            .map((id) => updatedSongs.find((item) => item.id === id))
+            .filter(Boolean);
+
+          const wasPlaying = Boolean(status.playing);
+          const keepCurrentId = currentSongId;
+
+          buildNativeQueue(remainingSongs, activeQueueName);
+
+          if (keepCurrentId) {
+            const index = remainingSongs.findIndex((item) => item.id === keepCurrentId);
+            if (index >= 0) {
+              nativePlaylist.skipTo(index);
+              if (wasPlaying) nativePlaylist.play();
+            }
+          }
         }
 
-        const updated = songs.filter((item) => item.id !== song.id);
-        setSongs(updated);
+        setSongs(updatedSongs);
+        setPlaylists(updatedPlaylists);
 
         await Promise.all([
-          saveLibrary(updated),
+          saveLibrary(updatedSongs),
+          savePlaylists(updatedPlaylists),
           deleteSongFile(song)
         ]);
       } catch (e) {
         setError(e?.message || 'Impossible de supprimer ce morceau.');
       }
     },
-    [currentSongId, player, songs]
+    [
+      activeQueueName,
+      buildNativeQueue,
+      currentSongId,
+      nativePlaylist,
+      playlists,
+      songs,
+      status.playing
+    ]
+  );
+
+  const createPlaylist = useCallback(
+    async (name) => {
+      const cleanedName = name.trim();
+
+      if (!cleanedName) {
+        setError('Donne un nom à la playlist.');
+        return null;
+      }
+
+      if (
+        playlists.some(
+          (playlist) => playlist.name.toLocaleLowerCase() === cleanedName.toLocaleLowerCase()
+        )
+      ) {
+        setError('Une playlist porte déjà ce nom.');
+        return null;
+      }
+
+      const now = new Date().toISOString();
+      const playlist = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        name: cleanedName,
+        songIds: [],
+        createdAt: now,
+        updatedAt: now
+      };
+
+      const updated = [...playlists, playlist].sort((a, b) =>
+        a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+      );
+
+      setPlaylists(updated);
+      await savePlaylists(updated);
+      return playlist;
+    },
+    [playlists]
+  );
+
+  const renamePlaylist = useCallback(
+    async (playlistId, name) => {
+      const cleanedName = name.trim();
+      if (!cleanedName) return;
+
+      const updated = playlists
+        .map((playlist) =>
+          playlist.id === playlistId
+            ? { ...playlist, name: cleanedName, updatedAt: new Date().toISOString() }
+            : playlist
+        )
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+        );
+
+      setPlaylists(updated);
+      await savePlaylists(updated);
+    },
+    [playlists]
+  );
+
+  const deletePlaylist = useCallback(
+    async (playlistId) => {
+      const updated = playlists.filter((playlist) => playlist.id !== playlistId);
+      setPlaylists(updated);
+      await savePlaylists(updated);
+    },
+    [playlists]
+  );
+
+  const updatePlaylistSongs = useCallback(
+    async (playlistId, songIds) => {
+      const validIds = new Set(songs.map((song) => song.id));
+      const uniqueIds = [...new Set(songIds)].filter((id) => validIds.has(id));
+
+      const updated = playlists.map((playlist) =>
+        playlist.id === playlistId
+          ? {
+              ...playlist,
+              songIds: uniqueIds,
+              updatedAt: new Date().toISOString()
+            }
+          : playlist
+      );
+
+      setPlaylists(updated);
+      await savePlaylists(updated);
+    },
+    [playlists, songs]
+  );
+
+  const removeSongFromPlaylist = useCallback(
+    async (playlistId, songId) => {
+      const playlist = playlists.find((item) => item.id === playlistId);
+      if (!playlist) return;
+
+      await updatePlaylistSongs(
+        playlistId,
+        playlist.songIds.filter((id) => id !== songId)
+      );
+    },
+    [playlists, updatePlaylistSongs]
+  );
+
+  const songsForPlaylist = useCallback(
+    (playlist) =>
+      (playlist?.songIds || [])
+        .map((id) => songs.find((song) => song.id === id))
+        .filter(Boolean),
+    [songs]
   );
 
   const seekTo = useCallback(
     async (seconds) => {
       try {
-        await player.seekTo(seconds);
+        await nativePlaylist.seekTo(seconds);
       } catch {
-        // Ignore un seek pendant le chargement du morceau.
+        // Ignore un seek pendant le chargement.
       }
     },
-    [player]
+    [nativePlaylist]
   );
 
   const setVolume = useCallback(
     (value) => {
       const nextVolume = Math.min(1, Math.max(0, value));
       setVolumeState(nextVolume);
-      player.volume = nextVolume;
+      nativePlaylist.volume = nextVolume;
     },
-    [player]
+    [nativePlaylist]
   );
 
   const value = {
     songs,
+    playlists,
     loadingLibrary,
     importing,
     error,
     clearError: () => setError(null),
 
     currentSong,
+    activeQueueName,
     isPlaying: Boolean(status.playing),
     currentTime: status.currentTime || 0,
     duration: status.duration || 0,
@@ -233,11 +476,19 @@ export function MusicProvider({ children }) {
     importSongs,
     removeSong,
     playSong,
+    playQueue,
     togglePlayPause,
     next,
     previous,
     seekTo,
-    setVolume
+    setVolume,
+
+    createPlaylist,
+    renamePlaylist,
+    deletePlaylist,
+    updatePlaylistSongs,
+    removeSongFromPlaylist,
+    songsForPlaylist
   };
 
   return (

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -9,35 +8,25 @@ import {
 import Artwork from './Artwork';
 import { useMusic } from '../context/MusicContext';
 
-export default function SongRow({ song }) {
+export default function SongRow({
+  song,
+  queueSongs,
+  queueName = 'Bibliothèque',
+  onMore,
+  onLongPress
+}) {
   const {
     currentSong,
     isPlaying,
-    playSong,
-    removeSong
+    playSong
   } = useMusic();
 
   const active = currentSong?.id === song.id;
 
-  const confirmDelete = () => {
-    Alert.alert(
-      'Supprimer le morceau ?',
-      `« ${song.title} » sera supprimé du stockage de l’application.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: () => removeSong(song)
-        }
-      ]
-    );
-  };
-
   return (
     <Pressable
-      onPress={() => playSong(song)}
-      onLongPress={confirmDelete}
+      onPress={() => playSong(song, queueSongs, false, queueName)}
+      onLongPress={onLongPress}
       style={({ pressed }) => [
         styles.row,
         pressed && styles.pressed
@@ -58,9 +47,24 @@ export default function SongRow({ song }) {
         </Text>
       </View>
 
-      <Text style={[styles.indicator, active && styles.activeText]}>
-        {active && isPlaying ? '≋' : '›'}
-      </Text>
+      {active && isPlaying && (
+        <Text style={[styles.indicator, styles.activeText]}>≋</Text>
+      )}
+
+      {onMore ? (
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+            onMore();
+          }}
+          hitSlop={10}
+          style={styles.moreButton}
+        >
+          <Text style={styles.moreText}>•••</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.chevron}>›</Text>
+      )}
     </Pressable>
   );
 }
@@ -90,12 +94,29 @@ const styles = StyleSheet.create({
     color: '#6f6f76'
   },
   indicator: {
-    width: 28,
+    width: 20,
     textAlign: 'center',
-    fontSize: 25,
-    color: '#8e8e93'
+    fontSize: 24
   },
   activeText: {
     color: '#4b35d1'
+  },
+  moreButton: {
+    width: 42,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  moreText: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: '#686870'
+  },
+  chevron: {
+    width: 22,
+    textAlign: 'center',
+    fontSize: 26,
+    color: '#8e8e93'
   }
 });

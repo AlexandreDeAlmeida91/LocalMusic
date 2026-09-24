@@ -22,6 +22,7 @@ function formatTime(seconds) {
 export default function PlayerModal() {
   const {
     currentSong,
+    activeQueueName,
     isPlaying,
     currentTime,
     duration,
@@ -63,7 +64,12 @@ export default function PlayerModal() {
             <Text style={styles.closeText}>⌄</Text>
           </Pressable>
 
-          <Text style={styles.headerTitle}>Lecture</Text>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Lecture</Text>
+            <Text style={styles.queueName} numberOfLines={1}>
+              {activeQueueName}
+            </Text>
+          </View>
           <View style={styles.closeButton} />
         </View>
 
@@ -185,10 +191,20 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     color: '#222'
   },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center'
+  },
   headerTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
     color: '#444'
+  },
+  queueName: {
+    marginTop: 2,
+    maxWidth: 220,
+    fontSize: 11,
+    color: '#8a8a92'
   },
   content: {
     flex: 1,
