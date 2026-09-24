@@ -26,6 +26,7 @@ import {
 } from '../services/playlists';
 import {
   ensurePlayer,
+  configureRemoteCommands,
   nativeRepeatMode,
   songToMediaItem,
   TrackPlayer
@@ -117,6 +118,11 @@ export function MusicProvider({ children }) {
         Math.min(startIndex, validSongs.length - 1)
       );
 
+      // Re-apply commands right before and after loading the queue.
+      // This is important on iOS: commands configured while the queue is empty
+      // can remain visible but disabled on the lock screen.
+      configureRemoteCommands();
+
       TrackPlayer.setMediaItems(
         validSongs.map(songToMediaItem),
         safeIndex
@@ -126,11 +132,19 @@ export function MusicProvider({ children }) {
       TrackPlayer.setRepeatMode(nativeRepeatMode(repeatMode));
       TrackPlayer.setVolume(volume);
 
+      // Refresh iOS MPRemoteCommandCenter now that there is an active item
+      // and a concrete queue, so Previous/Next/Seek become enabled.
+      configureRemoteCommands();
+
       activeQueueIdsRef.current = validSongs.map((song) => song.id);
       setActiveQueueName(queueName || 'Bibliothèque');
 
       if (autoPlay) {
         TrackPlayer.play();
+
+        // One final refresh after playback becomes active. This is harmless
+        // on Android and avoids stale disabled states on iOS.
+        configureRemoteCommands();
       }
     },
     [repeatMode, shuffleEnabled, volume]

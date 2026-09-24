@@ -5,6 +5,18 @@ import TrackPlayer, {
 
 let setupPromise = null;
 
+export function configureRemoteCommands() {
+  TrackPlayer.setCommands({
+    capabilities: [
+      PlayerCommand.PlayPause,
+      PlayerCommand.Next,
+      PlayerCommand.Previous,
+      PlayerCommand.Seek
+    ],
+    handling: 'native'
+  });
+}
+
 export async function ensurePlayer() {
   if (!setupPromise) {
     setupPromise = (async () => {
@@ -13,17 +25,10 @@ export async function ensurePlayer() {
         handleAudioBecomingNoisy: true
       });
 
-      // Native handling is intentionally used here. iOS can therefore process
-      // lock-screen commands even while the React Native JS thread is suspended.
-      TrackPlayer.setCommands({
-        capabilities: [
-          PlayerCommand.PlayPause,
-          PlayerCommand.Next,
-          PlayerCommand.Previous,
-          PlayerCommand.Seek
-        ],
-        handling: 'native'
-      });
+      // Initial configuration. We also refresh these commands each time
+      // a real media queue is loaded because iOS can otherwise keep
+      // Next/Previous/Seek disabled from the initial empty-queue state.
+      configureRemoteCommands();
 
       TrackPlayer.setRepeatMode(RepeatMode.Off);
       TrackPlayer.setShuffleEnabled(false);
