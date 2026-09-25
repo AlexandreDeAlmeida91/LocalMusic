@@ -424,7 +424,6 @@ function LibraryScreen() {
     <>
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>LOCAL · HORS LIGNE</Text>
           <Text style={styles.heading}>Ma musique</Text>
         </View>
 
@@ -492,7 +491,6 @@ function LibraryScreen() {
     <>
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>TES AMBIANCES</Text>
           <Text style={styles.heading}>Playlists</Text>
         </View>
 

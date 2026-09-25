@@ -13,7 +13,7 @@ export function configureRemoteCommands() {
       PlayerCommand.Previous,
       PlayerCommand.Seek
     ],
-    handling: 'native'
+    handling: 'js'
   });
 }
 
