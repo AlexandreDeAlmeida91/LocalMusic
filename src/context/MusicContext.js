@@ -31,6 +31,10 @@ import {
   songToMediaItem,
   TrackPlayer
 } from '../services/player';
+import {
+  deleteLyrics,
+  pickAndStoreLyrics
+} from '../services/lyrics';
 
 const MusicContext = createContext(null);
 
@@ -392,6 +396,72 @@ export function MusicProvider({ children }) {
     ]
   );
 
+  const addOrReplaceLyrics = useCallback(
+    async (song) => {
+      try {
+        const lyricsUri = await pickAndStoreLyrics(
+          song.id,
+          song.lyricsUri
+        );
+
+        if (!lyricsUri) return false;
+
+        const updated = songs.map((item) =>
+          item.id === song.id
+            ? {
+                ...item,
+                lyricsUri,
+                lyricsUpdatedAt: new Date().toISOString()
+              }
+            : item
+        );
+
+        setSongs(updated);
+        await saveLibrary(updated);
+        return true;
+      } catch (e) {
+        setError(
+          e?.message ||
+          'Impossible d’ajouter les paroles.'
+        );
+        return false;
+      }
+    },
+    [songs]
+  );
+
+  const removeLyrics = useCallback(
+    async (song) => {
+      try {
+        const updated = songs.map((item) =>
+          item.id === song.id
+            ? {
+                ...item,
+                lyricsUri: null,
+                lyricsUpdatedAt: null
+              }
+            : item
+        );
+
+        setSongs(updated);
+
+        await Promise.all([
+          saveLibrary(updated),
+          deleteLyrics(song.lyricsUri)
+        ]);
+
+        return true;
+      } catch (e) {
+        setError(
+          e?.message ||
+          'Impossible de supprimer les paroles.'
+        );
+        return false;
+      }
+    },
+    [songs]
+  );
+
   const createPlaylist = useCallback(
     async (name) => {
       const cleanedName = name.trim();
@@ -603,6 +673,8 @@ export function MusicProvider({ children }) {
 
     importSongs,
     removeSong,
+    addOrReplaceLyrics,
+    removeLyrics,
     playSong,
     playQueue,
     togglePlayPause,

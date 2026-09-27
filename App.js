@@ -210,6 +210,8 @@ function LibraryScreen() {
     clearError,
     importSongs,
     removeSong,
+    addOrReplaceLyrics,
+    removeLyrics,
     createPlaylist,
     deletePlaylist,
     updatePlaylistSongs,
@@ -259,6 +261,64 @@ function LibraryScreen() {
           onPress: () => removeSong(song)
         }
       ]
+    );
+  };
+
+  const openSongOptions = (song, playlist = null) => {
+    const actions = [
+      {
+        text: song.lyricsUri
+          ? 'Remplacer les paroles'
+          : 'Ajouter des paroles',
+        onPress: () => addOrReplaceLyrics(song)
+      }
+    ];
+
+    if (song.lyricsUri) {
+      actions.push({
+        text: 'Supprimer les paroles',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Supprimer les paroles ?',
+            `Le fichier de paroles associé à « ${song.title} » sera supprimé.`,
+            [
+              { text: 'Annuler', style: 'cancel' },
+              {
+                text: 'Supprimer',
+                style: 'destructive',
+                onPress: () => removeLyrics(song)
+              }
+            ]
+          );
+        }
+      });
+    }
+
+    if (playlist) {
+      actions.push({
+        text: 'Retirer de la playlist',
+        style: 'destructive',
+        onPress: () =>
+          removeSongFromPlaylist(playlist.id, song.id)
+      });
+    }
+
+    actions.push({
+      text: 'Supprimer le morceau',
+      style: 'destructive',
+      onPress: () => confirmDeleteSong(song)
+    });
+
+    actions.push({
+      text: 'Annuler',
+      style: 'cancel'
+    });
+
+    Alert.alert(
+      song.title,
+      playlist?.name || 'Gérer ce morceau',
+      actions
     );
   };
 
@@ -397,19 +457,7 @@ function LibraryScreen() {
               queueSongs={selectedPlaylistSongs}
               queueName={selectedPlaylist.name}
               onMore={() =>
-                Alert.alert(
-                  item.title,
-                  selectedPlaylist.name,
-                  [
-                    {
-                      text: 'Retirer de la playlist',
-                      style: 'destructive',
-                      onPress: () =>
-                        removeSongFromPlaylist(selectedPlaylist.id, item.id)
-                    },
-                    { text: 'Annuler', style: 'cancel' }
-                  ]
-                )
+                openSongOptions(item, selectedPlaylist)
               }
             />
           )}
@@ -476,8 +524,8 @@ function LibraryScreen() {
               song={item}
               queueSongs={songs}
               queueName="Bibliothèque"
-              onMore={() => confirmDeleteSong(item)}
-              onLongPress={() => confirmDeleteSong(item)}
+              onMore={() => openSongOptions(item)}
+              onLongPress={() => openSongOptions(item)}
             />
           )}
           contentContainerStyle={styles.list}

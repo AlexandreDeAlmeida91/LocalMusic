@@ -10,6 +10,7 @@ import {
 import Slider from '@react-native-community/slider';
 import Artwork from './Artwork';
 import PlaybackModeBar from './PlaybackModeBar';
+import LyricsModal from './LyricsModal';
 import { useMusic } from '../context/MusicContext';
 
 function formatTime(seconds) {
@@ -39,6 +40,7 @@ export default function PlayerModal() {
 
   const [sliderValue, setSliderValue] = useState(0);
   const [seeking, setSeeking] = useState(false);
+  const [lyricsVisible, setLyricsVisible] = useState(false);
 
   useEffect(() => {
     if (!seeking) {
@@ -71,7 +73,18 @@ export default function PlayerModal() {
               {activeQueueName}
             </Text>
           </View>
-          <View style={styles.closeButton} />
+
+          {currentSong.lyricsUri ? (
+            <Pressable
+              onPress={() => setLyricsVisible(true)}
+              hitSlop={10}
+              style={styles.lyricsHeaderButton}
+            >
+              <Text style={styles.lyricsHeaderText}>Paroles</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.lyricsHeaderButton} />
+          )}
         </View>
 
         <View style={styles.content}>
@@ -168,6 +181,12 @@ export default function PlayerModal() {
             <Text style={styles.speaker}>🔊</Text>
           </View>
         </View>
+
+        <LyricsModal
+          visible={lyricsVisible}
+          song={currentSong}
+          onClose={() => setLyricsVisible(false)}
+        />
       </SafeAreaView>
     </Modal>
   );
@@ -199,6 +218,17 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignItems: 'center'
+  },
+  lyricsHeaderButton: {
+    width: 60,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  lyricsHeaderText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4b35d1'
   },
   headerTitle: {
     fontSize: 12,

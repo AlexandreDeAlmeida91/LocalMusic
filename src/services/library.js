@@ -160,7 +160,7 @@ export async function pickAndImportSongs() {
 }
 
 export async function deleteSongFile(song) {
-  for (const uri of [song.uri, song.artworkUri]) {
+  for (const uri of [song.uri, song.artworkUri, song.lyricsUri]) {
     if (!uri || !uri.startsWith(FileSystem.documentDirectory)) continue;
 
     try {
