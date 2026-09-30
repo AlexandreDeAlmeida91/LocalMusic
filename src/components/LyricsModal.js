@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -11,6 +11,10 @@ import {
 } from 'react-native';
 import { readLyrics } from '../services/lyrics';
 
+const MIN_FONT_SIZE = 19;
+const MAX_FONT_SIZE = 32;
+const DEFAULT_FONT_SIZE = 24;
+
 export default function LyricsModal({
   visible,
   song,
@@ -18,6 +22,7 @@ export default function LyricsModal({
 }) {
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
 
   useEffect(() => {
     let active = true;
@@ -44,6 +49,19 @@ export default function LyricsModal({
     };
   }, [song?.id, song?.lyricsUri, visible]);
 
+  const lines = useMemo(
+    () => (lyrics ? lyrics.split('\n') : []),
+    [lyrics]
+  );
+
+  const decreaseFont = () => {
+    setFontSize((current) => Math.max(MIN_FONT_SIZE, current - 2));
+  };
+
+  const increaseFont = () => {
+    setFontSize((current) => Math.min(MAX_FONT_SIZE, current + 2));
+  };
+
   return (
     <Modal
       visible={visible}
@@ -63,7 +81,31 @@ export default function LyricsModal({
 
           <Text style={styles.headerTitle}>Paroles</Text>
 
-          <View style={styles.backButton} />
+          <View style={styles.fontControls}>
+            <Pressable
+              onPress={decreaseFont}
+              disabled={fontSize <= MIN_FONT_SIZE}
+              style={({ pressed }) => [
+                styles.fontButton,
+                pressed && styles.fontButtonPressed,
+                fontSize <= MIN_FONT_SIZE && styles.fontButtonDisabled
+              ]}
+            >
+              <Text style={styles.fontButtonText}>A−</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={increaseFont}
+              disabled={fontSize >= MAX_FONT_SIZE}
+              style={({ pressed }) => [
+                styles.fontButton,
+                pressed && styles.fontButtonPressed,
+                fontSize >= MAX_FONT_SIZE && styles.fontButtonDisabled
+              ]}
+            >
+              <Text style={styles.fontButtonText}>A+</Text>
+            </Pressable>
+          </View>
         </View>
 
         <ScrollView
@@ -71,22 +113,51 @@ export default function LyricsModal({
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>
-            {song?.title || ''}
-          </Text>
+          <View style={styles.songHeader}>
+            <Text style={styles.title}>
+              {song?.title || ''}
+            </Text>
 
-          <Text style={styles.artist}>
-            {song?.artist || 'Artiste inconnu'}
-          </Text>
+            <Text style={styles.artist}>
+              {song?.artist || 'Artiste inconnu'}
+            </Text>
+          </View>
 
           {loading ? (
             <View style={styles.loadingWrap}>
-              <ActivityIndicator size="large" />
+              <ActivityIndicator size="large" color="#ffffff" />
             </View>
           ) : lyrics ? (
-            <Text selectable style={styles.lyrics}>
-              {lyrics}
-            </Text>
+            <View style={styles.lyricsBlock}>
+              {lines.map((line, index) => {
+                const empty = !line.trim();
+
+                if (empty) {
+                  return (
+                    <View
+                      key={`space-${index}`}
+                      style={{ height: Math.round(fontSize * 0.75) }}
+                    />
+                  );
+                }
+
+                return (
+                  <Text
+                    key={`${index}-${line}`}
+                    selectable
+                    style={[
+                      styles.lyricLine,
+                      {
+                        fontSize,
+                        lineHeight: Math.round(fontSize * 1.42)
+                      }
+                    ]}
+                  >
+                    {line}
+                  </Text>
+                );
+              })}
+            </View>
           ) : (
             <Text style={styles.empty}>
               Aucune parole disponible pour ce morceau.
@@ -103,70 +174,111 @@ export default function LyricsModal({
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#f8f8fb'
+    backgroundColor: '#09090c'
   },
   header: {
-    height: 58,
-    paddingHorizontal: 14,
+    minHeight: 62,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#dedee4'
+    borderBottomColor: '#29292f',
+    backgroundColor: '#09090c'
   },
   backButton: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center'
   },
   backText: {
-    fontSize: 42,
-    lineHeight: 44,
-    color: '#111',
+    fontSize: 44,
+    lineHeight: 46,
+    color: '#ffffff',
     marginTop: -4
   },
   headerTitle: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
     fontSize: 18,
     fontWeight: '800',
-    color: '#111'
+    color: '#ffffff'
+  },
+  fontControls: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    gap: 6,
+    zIndex: 2
+  },
+  fontButton: {
+    minWidth: 42,
+    height: 34,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: '#202026',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  fontButtonPressed: {
+    opacity: 0.65
+  },
+  fontButtonDisabled: {
+    opacity: 0.35
+  },
+  fontButtonText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#ffffff'
   },
   scroll: {
     flex: 1
   },
   content: {
-    paddingHorizontal: 26,
-    paddingTop: 28
+    paddingHorizontal: 24,
+    paddingTop: 30
+  },
+  songHeader: {
+    paddingBottom: 10
   },
   title: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 30,
+    lineHeight: 37,
     fontWeight: '900',
-    color: '#111'
+    color: '#ffffff',
+    letterSpacing: -0.6
   },
   artist: {
-    marginTop: 7,
+    marginTop: 8,
     fontSize: 17,
-    color: '#73737b'
+    fontWeight: '600',
+    color: '#9b9ba4'
   },
   loadingWrap: {
-    paddingTop: 70,
+    paddingTop: 80,
     alignItems: 'center'
   },
-  lyrics: {
-    marginTop: 38,
-    fontSize: 21,
-    lineHeight: 34,
-    fontWeight: '600',
-    color: '#17171a'
+  lyricsBlock: {
+    marginTop: 34
+  },
+  lyricLine: {
+    marginBottom: 17,
+    fontFamily: 'Avenir Next',
+    fontWeight: '700',
+    color: '#f7f7f9',
+    letterSpacing: 0.15,
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2
   },
   empty: {
-    marginTop: 38,
-    fontSize: 17,
-    lineHeight: 25,
-    color: '#85858c'
+    marginTop: 42,
+    fontSize: 18,
+    lineHeight: 27,
+    color: '#9b9ba4'
   },
   bottomSpace: {
-    height: 80
+    height: 120
   }
 });
