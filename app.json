@@ -2,9 +2,9 @@
   "expo": {
     "name": "LocalMusic",
     "slug": "local-music",
-    "version": "1.4.2",
+    "version": "1.5.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.alexandre.localmusic",

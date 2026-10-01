@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Artwork from './Artwork';
+import AmbientBackground from './AmbientBackground';
 import PlaybackModeBar from './PlaybackModeBar';
 import LyricsModal from './LyricsModal';
 import { useMusic } from '../context/MusicContext';
@@ -58,11 +59,16 @@ export default function PlayerModal() {
       onRequestClose={() => setPlayerVisible(false)}
     >
       <SafeAreaView style={styles.safe}>
+        <AmbientBackground stronger />
+
         <View style={styles.header}>
           <Pressable
             onPress={() => setPlayerVisible(false)}
             hitSlop={12}
-            style={styles.closeButton}
+            style={({ pressed }) => [
+              styles.closeButton,
+              pressed && styles.pressed
+            ]}
           >
             <Text style={styles.closeText}>⌄</Text>
           </Pressable>
@@ -78,21 +84,24 @@ export default function PlayerModal() {
             <Pressable
               onPress={() => setLyricsVisible(true)}
               hitSlop={10}
-              style={styles.lyricsHeaderButton}
+              style={({ pressed }) => [
+                styles.lyricsHeaderButton,
+                pressed && styles.pressed
+              ]}
             >
               <Text style={styles.lyricsHeaderText}>Paroles</Text>
             </Pressable>
           ) : (
-            <View style={styles.lyricsHeaderButton} />
+            <View style={styles.lyricsHeaderSpacer} />
           )}
         </View>
 
         <View style={styles.content}>
-          <View style={styles.artworkWrap}>
+          <View style={styles.artworkGlow}>
             <Artwork
               uri={currentSong.artworkUri}
               size={300}
-              radius={24}
+              radius={26}
             />
           </View>
 
@@ -116,9 +125,9 @@ export default function PlayerModal() {
               minimumValue={0}
               maximumValue={Math.max(duration, 1)}
               value={Math.min(sliderValue, Math.max(duration, 1))}
-              minimumTrackTintColor="#4b35d1"
-              maximumTrackTintColor="#c9c9ce"
-              thumbTintColor="#4b35d1"
+              minimumTrackTintColor="#8066ff"
+              maximumTrackTintColor="#34364a"
+              thumbTintColor="#9b84ff"
               onSlidingStart={() => setSeeking(true)}
               onValueChange={setSliderValue}
               onSlidingComplete={(value) => {
@@ -139,14 +148,20 @@ export default function PlayerModal() {
             <Pressable
               onPress={previous}
               hitSlop={16}
-              style={styles.sideControl}
+              style={({ pressed }) => [
+                styles.sideControl,
+                pressed && styles.pressed
+              ]}
             >
               <Text style={styles.sideControlText}>|◀</Text>
             </Pressable>
 
             <Pressable
               onPress={togglePlayPause}
-              style={styles.mainControl}
+              style={({ pressed }) => [
+                styles.mainControl,
+                pressed && styles.mainControlPressed
+              ]}
             >
               <Text style={styles.mainControlText}>
                 {isPlaying ? 'Ⅱ' : '▶'}
@@ -156,7 +171,10 @@ export default function PlayerModal() {
             <Pressable
               onPress={next}
               hitSlop={16}
-              style={styles.sideControl}
+              style={({ pressed }) => [
+                styles.sideControl,
+                pressed && styles.pressed
+              ]}
             >
               <Text style={styles.sideControlText}>▶|</Text>
             </Pressable>
@@ -173,9 +191,9 @@ export default function PlayerModal() {
               minimumValue={0}
               maximumValue={1}
               value={volume}
-              minimumTrackTintColor="#5f5f66"
-              maximumTrackTintColor="#c9c9ce"
-              thumbTintColor="#5f5f66"
+              minimumTrackTintColor="#8066ff"
+              maximumTrackTintColor="#34364a"
+              thumbTintColor="#9b84ff"
               onValueChange={setVolume}
             />
             <Text style={styles.speaker}>🔊</Text>
@@ -195,78 +213,105 @@ export default function PlayerModal() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#f8f8fb'
+    backgroundColor: '#070913'
   },
   header: {
-    height: 54,
-    paddingHorizontal: 16,
+    minHeight: 64,
+    marginHorizontal: 12,
+    marginTop: 4,
+    paddingHorizontal: 8,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20, 21, 39, 0.68)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(152, 130, 255, 0.18)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between'
   },
   closeButton: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: 'rgba(39, 37, 70, 0.82)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(156, 135, 255, 0.30)',
     alignItems: 'center',
     justifyContent: 'center'
   },
   closeText: {
-    fontSize: 32,
-    lineHeight: 34,
-    color: '#222'
+    fontSize: 31,
+    lineHeight: 33,
+    color: '#ffffff',
+    marginTop: -5
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center'
   },
   lyricsHeaderButton: {
-    width: 60,
-    height: 44,
+    minWidth: 70,
+    height: 40,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(89, 58, 202, 0.44)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(161, 138, 255, 0.56)',
     alignItems: 'center',
     justifyContent: 'center'
   },
+  lyricsHeaderSpacer: {
+    width: 70,
+    height: 40
+  },
   lyricsHeaderText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#4b35d1'
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#c0b2ff'
   },
   headerTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#444'
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#f7f5ff'
   },
   queueName: {
-    marginTop: 2,
-    maxWidth: 220,
+    marginTop: 3,
+    maxWidth: 180,
     fontSize: 11,
-    color: '#8a8a92'
+    color: '#9892b7'
   },
   content: {
     flex: 1,
     paddingHorizontal: 28
   },
-  artworkWrap: {
-    alignItems: 'center',
-    marginTop: 20
+  artworkGlow: {
+    alignSelf: 'center',
+    marginTop: 28,
+    borderRadius: 28,
+    shadowColor: '#6b4cff',
+    shadowOpacity: 0.34,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 10 }
   },
   metadata: {
-    marginTop: 34
+    marginTop: 30
   },
   title: {
-    fontSize: 26,
-    lineHeight: 31,
-    fontWeight: '800',
-    color: '#111'
+    fontSize: 28,
+    lineHeight: 33,
+    fontWeight: '900',
+    color: '#ffffff',
+    letterSpacing: -0.5
   },
   artist: {
-    marginTop: 6,
+    marginTop: 7,
     fontSize: 19,
-    color: '#66666d'
+    fontWeight: '600',
+    color: '#aaa5c1'
   },
   album: {
     marginTop: 5,
-    fontSize: 14,
-    color: '#96969c'
+    fontSize: 13,
+    color: '#7f7a98'
   },
   progress: {
     marginTop: 22
@@ -282,48 +327,63 @@ const styles = StyleSheet.create({
   },
   time: {
     fontSize: 12,
-    color: '#77777d',
+    color: '#a29db8',
     fontVariant: ['tabular-nums']
   },
   controls: {
-    marginTop: 22,
+    marginTop: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 38
+    gap: 34
   },
   sideControl: {
-    width: 58,
-    height: 58,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(24, 26, 47, 0.90)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(147, 126, 255, 0.22)',
     alignItems: 'center',
     justifyContent: 'center'
   },
   sideControlText: {
-    fontSize: 25,
-    fontWeight: '700'
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#ffffff'
   },
   mainControl: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
-    backgroundColor: '#111',
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: '#684cff',
+    borderWidth: 1,
+    borderColor: '#a18dff',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    shadowColor: '#7658ff',
+    shadowOpacity: 0.58,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 7 }
+  },
+  mainControlPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.97 }]
   },
   mainControlText: {
     color: '#fff',
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: '900',
     marginLeft: 2
   },
   modeWrap: {
     marginTop: 24
   },
   volumeRow: {
-    marginTop: 30,
+    marginTop: 28,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9
+    gap: 8
   },
   speaker: {
     fontSize: 16
@@ -331,5 +391,8 @@ const styles = StyleSheet.create({
   volumeSlider: {
     flex: 1,
     height: 34
+  },
+  pressed: {
+    opacity: 0.70
   }
 });

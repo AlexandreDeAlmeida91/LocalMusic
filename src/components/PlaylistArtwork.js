@@ -15,11 +15,14 @@ export default function PlaylistArtwork({
     return (
       <Image
         source={{ uri }}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: radius
-        }}
+        style={[
+          styles.image,
+          {
+            width: size,
+            height: size,
+            borderRadius: radius
+          }
+        ]}
         resizeMode="cover"
       />
     );
@@ -39,7 +42,7 @@ export default function PlaylistArtwork({
       <Text
         style={{
           fontSize: Math.max(24, size * 0.42),
-          color: '#4b35d1',
+          color: '#9a83ff',
           fontWeight: '900'
         }}
       >
@@ -50,8 +53,13 @@ export default function PlaylistArtwork({
 }
 
 const styles = StyleSheet.create({
+  image: {
+    backgroundColor: '#17192a'
+  },
   placeholder: {
-    backgroundColor: '#ece9ff',
+    backgroundColor: '#19182d',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(151, 128, 255, 0.28)',
     alignItems: 'center',
     justifyContent: 'center'
   }

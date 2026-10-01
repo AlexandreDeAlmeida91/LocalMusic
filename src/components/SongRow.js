@@ -29,6 +29,7 @@ export default function SongRow({
       onLongPress={onLongPress}
       style={({ pressed }) => [
         styles.row,
+        active && styles.activeRow,
         pressed && styles.pressed
       ]}
     >
@@ -48,7 +49,7 @@ export default function SongRow({
       </View>
 
       {active && isPlaying && (
-        <Text style={[styles.indicator, styles.activeText]}>≋</Text>
+        <Text style={styles.indicator}>≋</Text>
       )}
 
       {onMore ? (
@@ -71,52 +72,68 @@ export default function SongRow({
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 72,
+    minHeight: 76,
+    marginHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(23, 25, 44, 0.88)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(148, 126, 255, 0.14)',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 12
+    gap: 12,
+    shadowColor: '#000000',
+    shadowOpacity: 0.20,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 }
+  },
+  activeRow: {
+    borderColor: 'rgba(139, 112, 255, 0.46)',
+    backgroundColor: 'rgba(34, 30, 67, 0.92)'
   },
   pressed: {
-    opacity: 0.6
+    opacity: 0.70,
+    transform: [{ scale: 0.992 }]
   },
   texts: {
     flex: 1
   },
   title: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#111'
+    fontWeight: '800',
+    color: '#f7f5ff'
   },
   artist: {
     marginTop: 4,
-    fontSize: 14,
-    color: '#6f6f76'
+    fontSize: 13,
+    color: '#aaa7be'
   },
   indicator: {
-    width: 20,
+    width: 18,
     textAlign: 'center',
-    fontSize: 24
+    fontSize: 23,
+    color: '#9a83ff'
   },
   activeText: {
-    color: '#4b35d1'
+    color: '#b7a8ff'
   },
   moreButton: {
-    width: 42,
+    width: 40,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center'
   },
   moreText: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 1,
-    color: '#686870'
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: '#aba4d0'
   },
   chevron: {
     width: 22,
     textAlign: 'center',
     fontSize: 26,
-    color: '#8e8e93'
+    color: '#9f95d4'
   }
 });

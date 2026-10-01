@@ -25,10 +25,11 @@ export default function PlaybackModeBar({ compact = false }) {
     <View style={[styles.row, compact && styles.compactRow]}>
       <Pressable
         onPress={toggleShuffle}
-        style={[
+        style={({ pressed }) => [
           styles.button,
           compact && styles.compactButton,
-          shuffleEnabled && styles.buttonActive
+          shuffleEnabled && styles.buttonActive,
+          pressed && styles.pressed
         ]}
       >
         <Text
@@ -51,10 +52,11 @@ export default function PlaybackModeBar({ compact = false }) {
 
       <Pressable
         onPress={cycleRepeatMode}
-        style={[
+        style={({ pressed }) => [
           styles.button,
           compact && styles.compactButton,
-          repeatMode !== 'off' && styles.buttonActive
+          repeatMode !== 'off' && styles.buttonActive,
+          pressed && styles.pressed
         ]}
       >
         <Text
@@ -81,7 +83,7 @@ export default function PlaybackModeBar({ compact = false }) {
 const styles = StyleSheet.create({
   row: {
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingBottom: 12,
     flexDirection: 'row',
     gap: 10
   },
@@ -92,33 +94,39 @@ const styles = StyleSheet.create({
   },
   button: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 12,
-    backgroundColor: '#efeff4',
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(144, 123, 235, 0.20)',
+    backgroundColor: 'rgba(25, 27, 47, 0.90)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7
+    gap: 8
   },
   compactButton: {
-    flex: 0,
-    minWidth: 126,
-    paddingHorizontal: 12
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10
   },
   buttonActive: {
-    backgroundColor: '#ece9ff'
+    backgroundColor: 'rgba(83, 59, 184, 0.48)',
+    borderColor: 'rgba(158, 135, 255, 0.62)'
+  },
+  pressed: {
+    opacity: 0.72
   },
   symbol: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '900',
-    color: '#5e5e66'
+    color: '#9b87ee'
   },
   label: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#55555d'
+    color: '#efedfa'
   },
   textActive: {
-    color: '#4b35d1'
+    color: '#b9a8ff'
   }
 });

@@ -18,6 +18,7 @@ import PlayerModal from './src/components/PlayerModal';
 import SongRow from './src/components/SongRow';
 import PlaybackModeBar from './src/components/PlaybackModeBar';
 import PlaylistArtwork from './src/components/PlaylistArtwork';
+import AmbientBackground from './src/components/AmbientBackground';
 import { ensurePlayer } from './src/services/player';
 
 function SegmentedControl({ value, onChange }) {
@@ -139,6 +140,7 @@ function ManageSongsModal({ visible, playlist, songs, onClose, onSave }) {
       onRequestClose={onClose}
     >
       <SafeAreaView style={styles.modalPage}>
+        <AmbientBackground />
         <View style={styles.modalHeader}>
           <Pressable onPress={onClose} style={styles.modalHeaderButton}>
             <Text style={styles.modalCancel}>Annuler</Text>
@@ -390,8 +392,8 @@ function LibraryScreen() {
         <Pressable onPress={() => choosePlaylistCover(selectedPlaylist.id)}>
           <PlaylistArtwork
             uri={selectedPlaylist.coverUri}
-            size={100}
-            radius={22}
+            size={118}
+            radius={24}
           />
         </Pressable>
 
@@ -606,7 +608,8 @@ function LibraryScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
+      <AmbientBackground />
 
       {selectedPlaylist
         ? renderPlaylistDetail()
@@ -665,7 +668,8 @@ export default function App() {
   if (!ready) {
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
+        <AmbientBackground stronger />
         <View style={styles.center}>
           {bootError ? (
             <>
@@ -695,12 +699,12 @@ export default function App() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#fff'
+    backgroundColor: '#070913'
   },
   header: {
-    paddingTop: 12,
+    paddingTop: 14,
     paddingHorizontal: 18,
-    paddingBottom: 10,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between'
@@ -709,70 +713,86 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.1,
-    color: '#77777f'
+    color: '#9d97bb'
   },
   heading: {
     marginTop: 2,
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 39,
+    lineHeight: 45,
     fontWeight: '900',
-    color: '#111'
+    letterSpacing: -1.1,
+    color: '#ffffff'
   },
   addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#111',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#6c4eff',
+    borderWidth: 1,
+    borderColor: '#9c87ff',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    shadowColor: '#7254ff',
+    shadowOpacity: 0.48,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 }
   },
   addButtonPressed: {
-    opacity: 0.55
+    opacity: 0.65,
+    transform: [{ scale: 0.96 }]
   },
   addButtonText: {
     color: '#fff',
-    fontSize: 28,
-    lineHeight: 30,
+    fontSize: 31,
+    lineHeight: 33,
     fontWeight: '500',
     marginTop: -2
   },
   segmented: {
     marginHorizontal: 16,
-    marginBottom: 8,
-    padding: 3,
-    borderRadius: 11,
-    backgroundColor: '#efeff4',
+    marginBottom: 10,
+    padding: 4,
+    minHeight: 49,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(148, 126, 255, 0.22)',
+    backgroundColor: 'rgba(25, 27, 48, 0.90)',
     flexDirection: 'row'
   },
   segment: {
     flex: 1,
-    minHeight: 34,
-    borderRadius: 8,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center'
   },
   segmentActive: {
-    backgroundColor: '#fff'
+    backgroundColor: 'rgba(101, 75, 221, 0.66)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(174, 154, 255, 0.62)',
+    shadowColor: '#7558ff',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }
   },
   segmentText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#77777f'
+    fontWeight: '800',
+    color: '#aaa5c4'
   },
   segmentTextActive: {
-    color: '#111'
+    color: '#ffffff'
   },
   list: {
-    paddingBottom: 10
+    paddingTop: 1,
+    paddingBottom: 12
   },
   separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#ededf1',
-    marginLeft: 82
+    height: 9,
+    backgroundColor: 'transparent'
   },
   fullSeparator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#ededf1'
+    height: 10,
+    backgroundColor: 'transparent'
   },
   center: {
     flex: 1,
@@ -783,16 +803,17 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: '#777'
+    color: '#aaa5c1'
   },
   emptyIcon: {
     fontSize: 64,
-    color: '#4b35d1'
+    color: '#8c70ff'
   },
   emptyTitle: {
     marginTop: 12,
     fontSize: 24,
-    fontWeight: '800'
+    fontWeight: '900',
+    color: '#ffffff'
   },
   emptyText: {
     marginTop: 8,
@@ -800,30 +821,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 15,
     lineHeight: 21,
-    color: '#717178'
+    color: '#aaa5c1'
   },
   importButton: {
     marginTop: 22,
-    borderRadius: 14,
-    backgroundColor: '#4b35d1',
-    paddingHorizontal: 20,
-    paddingVertical: 13
+    borderRadius: 16,
+    backgroundColor: '#6448ee',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#9982ff',
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    shadowColor: '#6749f1',
+    shadowOpacity: 0.28,
+    shadowRadius: 13,
+    shadowOffset: { width: 0, height: 6 }
   },
   importButtonText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '800'
+    fontWeight: '900'
   },
   importOverlay: {
     position: 'absolute',
     left: 18,
     right: 18,
     top: 92,
-    minHeight: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(248,248,251,0.98)',
+    minHeight: 54,
+    borderRadius: 17,
+    backgroundColor: 'rgba(27, 28, 50, 0.98)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#d8d8de',
+    borderColor: 'rgba(151, 128, 255, 0.42)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -831,55 +858,67 @@ const styles = StyleSheet.create({
     zIndex: 10
   },
   importOverlayText: {
-    color: '#444',
-    fontWeight: '600'
+    color: '#f0edff',
+    fontWeight: '700'
   },
   playlistList: {
     paddingHorizontal: 16,
-    paddingBottom: 12
+    paddingTop: 2,
+    paddingBottom: 14
   },
   playlistRow: {
-    minHeight: 78,
+    minHeight: 88,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 19,
+    backgroundColor: 'rgba(23, 25, 44, 0.90)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(148, 126, 255, 0.16)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14
+    gap: 14,
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 }
   },
   pressed: {
-    opacity: 0.58
+    opacity: 0.66,
+    transform: [{ scale: 0.992 }]
   },
   playlistRowText: {
     flex: 1
   },
   playlistRowTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111'
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#ffffff'
   },
   playlistRowCount: {
-    marginTop: 4,
+    marginTop: 5,
     fontSize: 13,
-    color: '#7a7a82'
+    color: '#aaa5c1'
   },
   chevron: {
-    fontSize: 28,
-    color: '#9a9aa1'
+    fontSize: 30,
+    color: '#9f95d4'
   },
   detailHeader: {
-    minHeight: 52,
-    paddingHorizontal: 10,
+    minHeight: 54,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between'
   },
   backButton: {
-    minWidth: 100,
+    minWidth: 108,
     height: 44,
     justifyContent: 'center'
   },
   backText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#4b35d1'
+    fontWeight: '800',
+    color: '#9a83ff'
   },
   optionsButton: {
     width: 50,
@@ -889,13 +928,18 @@ const styles = StyleSheet.create({
   },
   optionsText: {
     fontSize: 17,
-    fontWeight: '800',
-    color: '#444'
+    fontWeight: '900',
+    color: '#c0b9dc'
   },
   playlistHero: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 18,
+    marginHorizontal: 18,
+    marginTop: 4,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 24,
+    backgroundColor: 'rgba(17, 19, 34, 0.54)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(149, 127, 255, 0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18
@@ -904,20 +948,22 @@ const styles = StyleSheet.create({
     flex: 1
   },
   playlistTitle: {
-    fontSize: 28,
-    lineHeight: 33,
+    fontSize: 31,
+    lineHeight: 35,
     fontWeight: '900',
-    color: '#111'
+    letterSpacing: -0.7,
+    color: '#ffffff'
   },
   playlistCount: {
-    marginTop: 7,
+    marginTop: 8,
     fontSize: 14,
-    color: '#7a7a82'
+    color: '#b1acc5'
   },
   coverHint: {
-    marginTop: 7,
+    marginTop: 8,
     fontSize: 11,
-    color: '#9a9aa1'
+    lineHeight: 15,
+    color: '#7f7998'
   },
   playlistActions: {
     paddingHorizontal: 18,
@@ -927,37 +973,45 @@ const styles = StyleSheet.create({
   },
   playAllButton: {
     flex: 1,
-    minHeight: 46,
-    borderRadius: 13,
-    backgroundColor: '#4b35d1',
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: '#6549ef',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#9b84ff',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    shadowColor: '#6d4fff',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 }
   },
   playAllText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '800'
+    fontWeight: '900'
   },
   disabledButton: {
     opacity: 0.35
   },
   manageButton: {
     minWidth: 118,
-    minHeight: 46,
+    minHeight: 50,
     paddingHorizontal: 15,
-    borderRadius: 13,
-    backgroundColor: '#efeff4',
+    borderRadius: 16,
+    backgroundColor: 'rgba(25, 27, 47, 0.92)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(147, 126, 255, 0.24)',
     alignItems: 'center',
     justifyContent: 'center'
   },
   manageButtonText: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#222'
+    fontWeight: '900',
+    color: '#f2efff'
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.36)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24
@@ -965,28 +1019,36 @@ const styles = StyleSheet.create({
   dialog: {
     width: '100%',
     maxWidth: 420,
-    borderRadius: 22,
-    backgroundColor: '#fff',
-    padding: 20
+    borderRadius: 24,
+    backgroundColor: '#151727',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(154, 131, 255, 0.36)',
+    padding: 20,
+    shadowColor: '#6749f1',
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 }
   },
   dialogTitle: {
     fontSize: 22,
     fontWeight: '900',
-    color: '#111'
+    color: '#ffffff'
   },
   dialogHint: {
     marginTop: 5,
     fontSize: 13,
-    color: '#77777f'
+    color: '#aaa5c1'
   },
   input: {
     marginTop: 18,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#f1f1f5',
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#202237',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(153, 130, 255, 0.22)',
     paddingHorizontal: 14,
     fontSize: 16,
-    color: '#111'
+    color: '#ffffff'
   },
   dialogActions: {
     marginTop: 18,
@@ -1003,30 +1065,31 @@ const styles = StyleSheet.create({
   textButtonLabel: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#666'
+    color: '#b4afc6'
   },
   primarySmallButton: {
     minHeight: 42,
-    borderRadius: 11,
+    borderRadius: 12,
     paddingHorizontal: 18,
-    backgroundColor: '#4b35d1',
+    backgroundColor: '#6549ef',
     alignItems: 'center',
     justifyContent: 'center'
   },
   primarySmallButtonLabel: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '800'
+    fontWeight: '900'
   },
   modalPage: {
     flex: 1,
-    backgroundColor: '#fff'
+    backgroundColor: '#090b15'
   },
   modalHeader: {
-    minHeight: 58,
+    minHeight: 60,
     paddingHorizontal: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e3e3e8',
+    borderBottomColor: 'rgba(152, 130, 255, 0.18)',
+    backgroundColor: '#0a0c17',
     flexDirection: 'row',
     alignItems: 'center'
   },
@@ -1042,27 +1105,31 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#111'
+    fontWeight: '900',
+    color: '#ffffff'
   },
   modalSubtitle: {
     marginTop: 2,
     maxWidth: 220,
     fontSize: 11,
-    color: '#85858c'
+    color: '#8e88a9'
   },
   modalCancel: {
     fontSize: 15,
-    color: '#555'
+    color: '#b3aec5'
   },
   modalSave: {
     fontSize: 15,
-    fontWeight: '800',
-    color: '#4b35d1'
+    fontWeight: '900',
+    color: '#9a83ff'
   },
   selectSongRow: {
-    minHeight: 66,
-    paddingHorizontal: 18,
+    minHeight: 68,
+    marginHorizontal: 14,
+    marginVertical: 4,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(25, 27, 47, 0.92)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 13
@@ -1072,13 +1139,13 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 7,
     borderWidth: 1.5,
-    borderColor: '#aaaab2',
+    borderColor: '#77718f',
     alignItems: 'center',
     justifyContent: 'center'
   },
   checkBoxActive: {
-    backgroundColor: '#4b35d1',
-    borderColor: '#4b35d1'
+    backgroundColor: '#6549ef',
+    borderColor: '#9b84ff'
   },
   checkMark: {
     color: '#fff',
@@ -1090,12 +1157,12 @@ const styles = StyleSheet.create({
   },
   selectSongTitle: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#111'
+    fontWeight: '800',
+    color: '#ffffff'
   },
   selectSongArtist: {
     marginTop: 3,
     fontSize: 13,
-    color: '#77777f'
+    color: '#aaa5c1'
   }
 });

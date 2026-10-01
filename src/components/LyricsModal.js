@@ -10,6 +10,7 @@ import {
   View
 } from 'react-native';
 import { readLyrics } from '../services/lyrics';
+import AmbientBackground from './AmbientBackground';
 
 const MIN_FONT_SIZE = 19;
 const MAX_FONT_SIZE = 32;
@@ -70,6 +71,7 @@ export default function LyricsModal({
       onRequestClose={onClose}
     >
       <SafeAreaView style={styles.safe}>
+        <AmbientBackground stronger />
         <View style={styles.header}>
           <Pressable
             onPress={onClose}
@@ -174,7 +176,7 @@ export default function LyricsModal({
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#09090c'
+    backgroundColor: '#070913'
   },
   header: {
     minHeight: 62,
@@ -182,8 +184,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#29292f',
-    backgroundColor: '#09090c'
+    borderBottomColor: 'rgba(151, 128, 255, 0.18)',
+    backgroundColor: 'rgba(7, 9, 19, 0.88)'
   },
   backButton: {
     width: 52,
@@ -217,7 +219,7 @@ const styles = StyleSheet.create({
     height: 34,
     paddingHorizontal: 8,
     borderRadius: 10,
-    backgroundColor: '#202026',
+    backgroundColor: 'rgba(35, 34, 63, 0.92)',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -253,7 +255,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 17,
     fontWeight: '600',
-    color: '#9b9ba4'
+    color: '#aaa5c1'
   },
   loadingWrap: {
     paddingTop: 80,
@@ -276,7 +278,7 @@ const styles = StyleSheet.create({
     marginTop: 42,
     fontSize: 18,
     lineHeight: 27,
-    color: '#9b9ba4'
+    color: '#aaa5c1'
   },
   bottomSpace: {
     height: 120

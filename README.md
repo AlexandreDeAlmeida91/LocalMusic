@@ -222,3 +222,8 @@ La V1.4 ajoute les paroles locales en fichiers TXT. Voir `V1_4_CHANGES.md`.
 ## V1.4.2
 
 La V1.4.2 rend le stockage portable entre les conteneurs iOS et protège les playlists. Voir `V1_4_2_CHANGES.md`.
+
+
+## V1.5.0 — thème Neon
+
+Refonte graphique sombre/violette. Voir `V1_5_0_CHANGES.md`.

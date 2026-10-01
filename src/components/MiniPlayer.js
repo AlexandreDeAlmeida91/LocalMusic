@@ -22,9 +22,12 @@ export default function MiniPlayer() {
   return (
     <Pressable
       onPress={() => setPlayerVisible(true)}
-      style={styles.container}
+      style={({ pressed }) => [
+        styles.container,
+        pressed && styles.pressed
+      ]}
     >
-      <Artwork uri={currentSong.artworkUri} size={46} radius={8} />
+      <Artwork uri={currentSong.artworkUri} size={48} radius={10} />
 
       <View style={styles.texts}>
         <Text style={styles.title} numberOfLines={1}>
@@ -48,6 +51,8 @@ export default function MiniPlayer() {
         </Text>
       </Pressable>
 
+      <View style={styles.divider} />
+
       <Pressable
         onPress={(event) => {
           event.stopPropagation();
@@ -66,41 +71,56 @@ const styles = StyleSheet.create({
   container: {
     marginHorizontal: 10,
     marginBottom: 8,
-    minHeight: 62,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(245,245,248,0.97)',
+    minHeight: 70,
+    borderRadius: 22,
+    paddingHorizontal: 11,
+    backgroundColor: 'rgba(27, 27, 52, 0.96)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#d7d7dc',
+    borderColor: 'rgba(154, 131, 255, 0.55)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10
+    gap: 10,
+    shadowColor: '#6d4dff',
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 7 }
+  },
+  pressed: {
+    opacity: 0.84
   },
   texts: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   title: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#111'
+    fontWeight: '800',
+    color: '#ffffff'
   },
   artist: {
-    marginTop: 2,
+    marginTop: 3,
     fontSize: 12,
-    color: '#6f6f76'
+    color: '#aaa4c9'
   },
   control: {
-    width: 40,
-    height: 48,
+    width: 38,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center'
   },
   controlText: {
     fontSize: 22,
-    fontWeight: '700'
+    fontWeight: '800',
+    color: '#ffffff'
   },
   nextText: {
     fontSize: 16,
-    fontWeight: '700'
+    fontWeight: '800',
+    color: '#ffffff'
+  },
+  divider: {
+    width: StyleSheet.hairlineWidth,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.16)'
   }
 });
