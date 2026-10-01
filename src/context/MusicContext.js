@@ -77,23 +77,12 @@ export function MusicProvider({ children }) {
           loadPlaylists()
         ]);
 
-        const validSongIds = new Set(storedSongs.map((song) => song.id));
-        const cleanedPlaylists = storedPlaylists.map((playlist) => ({
-          ...playlist,
-          songIds: (playlist.songIds || []).filter((id) =>
-            validSongIds.has(id)
-          )
-        }));
-
         setSongs(storedSongs);
-        setPlaylists(cleanedPlaylists);
 
-        if (
-          JSON.stringify(cleanedPlaylists) !==
-          JSON.stringify(storedPlaylists)
-        ) {
-          await savePlaylists(cleanedPlaylists);
-        }
+        // Never destructively rewrite playlist membership during app startup.
+        // If storage is temporarily unavailable or a song needs migration,
+        // preserving songIds lets the relationship recover on the next launch.
+        setPlaylists(storedPlaylists);
       } catch (e) {
         setError(
           e?.message ||

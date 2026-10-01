@@ -202,3 +202,23 @@ Pour la méthode **Windows + GitHub Actions + SideStore**, consulte :
 `SIDELOAD_WINDOWS.md`
 
 Le workflow `.github/workflows/build-ios-sidestore.yml` fabrique automatiquement un IPA non signé sur un runner macOS GitHub.
+
+
+## V1.2
+
+La V1.2 ajoute les playlists locales. Voir `V1_2_CHANGES.md`.
+
+
+## V1.3
+
+Voir `V1_3_CHANGES.md` et `UPDATE_V1_3.md`.
+
+
+## V1.4
+
+La V1.4 ajoute les paroles locales en fichiers TXT. Voir `V1_4_CHANGES.md`.
+
+
+## V1.4.2
+
+La V1.4.2 rend le stockage portable entre les conteneurs iOS et protège les playlists. Voir `V1_4_2_CHANGES.md`.

@@ -1,6 +1,6 @@
 {
   "name": "local-music-expo-v1",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -14,15 +14,14 @@
   },
   "dependencies": {
     "@react-native-community/slider": "5.2.0",
-    "@rntp/player": "5.9.2",
-    "expo": "~57.0.26",
-    "expo-asset": "~57.0.2",
-    "expo-constants": "57.0.20",
-    "expo-document-picker": "~57.0.3",
+    "expo": "~57.0.25",
+    "expo-document-picker": "~57.0.2",
     "expo-file-system": "~57.0.7",
     "expo-status-bar": "~57.0.0",
     "react": "19.2.3",
-    "react-native": "0.86.3"
+    "react-native": "0.86.3",
+    "expo-asset": "~57.0.2",
+    "@rntp/player": "5.9.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
