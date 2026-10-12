@@ -179,6 +179,14 @@ async function hydrateSong(originalSong) {
     }
   }
 
+  // A manually selected cover takes priority over the embedded ID3 cover,
+  // which is kept for restoration if the custom cover is removed.
+  let customArtworkPath = relativeLocalPath(originalSong.customArtworkPath);
+  if (customArtworkPath && !(await fileExists(customArtworkPath))) {
+    customArtworkPath = null;
+    migrated = true;
+  }
+
   let lyricsPath =
     relativeLocalPath(
       originalSong.lyricsPath ||
@@ -206,6 +214,7 @@ async function hydrateSong(originalSong) {
   if (
     audioPath !== originalSong.audioPath ||
     artworkPath !== originalSong.artworkPath ||
+    customArtworkPath !== (originalSong.customArtworkPath || null) ||
     lyricsPath !== originalSong.lyricsPath ||
     originalSong.uri ||
     originalSong.artworkUri ||
@@ -220,12 +229,13 @@ async function hydrateSong(originalSong) {
       ...originalSong,
       audioPath,
       artworkPath: artworkPath || null,
+      customArtworkPath: customArtworkPath || null,
       lyricsPath: lyricsPath || null,
 
-      // Runtime-only resolved paths.
+      // Runtime-only resolved paths. Custom cover wins over ID3 cover.
       uri: resolveLocalPath(audioPath),
-      artworkUri: artworkPath
-        ? resolveLocalPath(artworkPath)
+      artworkUri: (customArtworkPath || artworkPath)
+        ? resolveLocalPath(customArtworkPath || artworkPath)
         : null,
       lyricsUri: lyricsPath
         ? resolveLocalPath(lyricsPath)
@@ -288,6 +298,7 @@ async function recoverOrphanSongs(existingSongs) {
         id,
         audioPath,
         artworkPath: artworkPath || null,
+        customArtworkPath: null,
         lyricsPath: lyricsPath || null,
 
         fileName,
@@ -335,7 +346,8 @@ function toStoredSong(song) {
     lyricsPath:
       relativeLocalPath(
         song.lyricsPath || lyricsUri
-      ) || null
+      ) || null,
+    customArtworkPath: relativeLocalPath(song.customArtworkPath) || null
   };
 }
 
@@ -456,6 +468,7 @@ export async function pickAndImportSongs() {
       id,
       audioPath,
       artworkPath,
+      customArtworkPath: null,
       lyricsPath: null,
 
       fileName,
@@ -481,7 +494,8 @@ export async function pickAndImportSongs() {
 export async function deleteSongFile(song) {
   const paths = [
     song.audioPath || song.uri,
-    song.artworkPath || song.artworkUri,
+    song.artworkPath,
+    song.customArtworkPath,
     song.lyricsPath || song.lyricsUri
   ];
 

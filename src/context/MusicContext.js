@@ -35,6 +35,11 @@ import {
   deleteLyrics,
   pickAndStoreLyrics
 } from '../services/lyrics';
+import {
+  deleteCustomSongArtwork,
+  pickCustomSongArtwork
+} from '../services/songArtwork';
+import { resolveLocalPath } from '../services/storage';
 
 const MusicContext = createContext(null);
 
@@ -451,6 +456,91 @@ export function MusicProvider({ children }) {
     [songs]
   );
 
+  // Refresh Now Playing and every matching queued item in-place.
+  // updateMetadata preserves the playback position and keeps remote
+  // Play/Pause/Skip/Seek controls working while a cover changes.
+  const updateNativeArtwork = useCallback((songId, artworkUri) => {
+    if (!playerReady) return;
+
+    try {
+      const queue = TrackPlayer.getQueue();
+      queue.forEach((item, index) => {
+        if (
+          item?.mediaId === songId ||
+          item?.extras?.localMusicSongId === songId
+        ) {
+          TrackPlayer.updateMetadata(index, {
+            artworkUrl: artworkUri || ''
+          });
+        }
+      });
+    } catch (e) {
+      // A failed metadata refresh must never reset or interrupt playback.
+      // The selected cover remains saved and will load with the next queue.
+      console.warn('Peak Music: artwork metadata refresh failed', e);
+    }
+  }, [playerReady]);
+
+  const changeSongArtwork = useCallback(async (song, source) => {
+    let newPath = null;
+    try {
+      newPath = await pickCustomSongArtwork(song.id, source);
+      if (!newPath) return false;
+
+      // Persist first. Delete the old custom file only after a safe save.
+      const artworkUri = resolveLocalPath(newPath);
+      const updated = songs.map((item) =>
+        item.id === song.id
+          ? {
+              ...item,
+              customArtworkPath: newPath,
+              artworkUri,
+              artworkUpdatedAt: new Date().toISOString()
+            }
+          : item
+      );
+      await saveLibrary(updated);
+      setSongs(updated);
+      updateNativeArtwork(song.id, artworkUri);
+      await deleteCustomSongArtwork(song.customArtworkPath);
+      return true;
+    } catch (e) {
+      // A failed import should not leak a newly created custom file.
+      if (newPath) await deleteCustomSongArtwork(newPath);
+      setError(e?.message || 'Impossible de changer la pochette.');
+      return false;
+    }
+  }, [songs, updateNativeArtwork]);
+
+  const removeSongArtwork = useCallback(async (song) => {
+    if (!song.customArtworkPath) return false;
+
+    try {
+      // Restore embedded ID3 artwork, or the default placeholder.
+      const artworkUri = song.artworkPath
+        ? resolveLocalPath(song.artworkPath)
+        : null;
+      const updated = songs.map((item) =>
+        item.id === song.id
+          ? {
+              ...item,
+              customArtworkPath: null,
+              artworkUri,
+              artworkUpdatedAt: new Date().toISOString()
+            }
+          : item
+      );
+      await saveLibrary(updated);
+      setSongs(updated);
+      updateNativeArtwork(song.id, artworkUri);
+      await deleteCustomSongArtwork(song.customArtworkPath);
+      return true;
+    } catch (e) {
+      setError(e?.message || 'Impossible de retirer la pochette.');
+      return false;
+    }
+  }, [songs, updateNativeArtwork]);
+
   const createPlaylist = useCallback(
     async (name) => {
       const cleanedName = name.trim();
@@ -664,6 +754,8 @@ export function MusicProvider({ children }) {
     removeSong,
     addOrReplaceLyrics,
     removeLyrics,
+    changeSongArtwork,
+    removeSongArtwork,
     playSong,
     playQueue,
     togglePlayPause,

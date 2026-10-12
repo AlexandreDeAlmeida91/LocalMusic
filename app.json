@@ -2,7 +2,7 @@
   "expo": {
     "name": "Peak Music",
     "slug": "local-music",
-    "version": "1.5.1",
+    "version": "1.5.2",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "ios": {
@@ -19,7 +19,16 @@
       "package": "com.alexandre.localmusic"
     },
     "plugins": [
-      "expo-document-picker"
+      "expo-document-picker",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Peak Music utilise tes photos uniquement pour personnaliser les pochettes de tes morceaux.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-asset"
     ],
     "icon": "./assets/icon.png"
   }

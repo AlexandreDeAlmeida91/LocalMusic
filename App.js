@@ -214,6 +214,8 @@ function LibraryScreen() {
     removeSong,
     addOrReplaceLyrics,
     removeLyrics,
+    changeSongArtwork,
+    removeSongArtwork,
     createPlaylist,
     deletePlaylist,
     updatePlaylistSongs,
@@ -268,6 +270,34 @@ function LibraryScreen() {
 
   const openSongOptions = (song, playlist = null) => {
     const actions = [
+      {
+        text: 'Modifier la pochette',
+        onPress: () => {
+          Alert.alert('Modifier la pochette', 'Choisis la source de l’image.', [
+            { text: 'Photos', onPress: () => changeSongArtwork(song, 'photos') },
+            { text: 'Fichiers', onPress: () => changeSongArtwork(song, 'files') },
+            { text: 'Annuler', style: 'cancel' }
+          ]);
+        }
+      },
+      ...(song.customArtworkPath ? [{
+        text: 'Supprimer la pochette personnalisée',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Retirer la pochette personnalisée ?',
+            'La pochette intégrée au MP3 sera restaurée si elle existe.',
+            [
+              { text: 'Annuler', style: 'cancel' },
+              {
+                text: 'Retirer',
+                style: 'destructive',
+                onPress: () => removeSongArtwork(song)
+              }
+            ]
+          );
+        }
+      }] : []),
       {
         text: song.lyricsUri
           ? 'Remplacer les paroles'

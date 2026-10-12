@@ -236,3 +236,8 @@ icône gothique rouge/noir. Le bundle ID (`com.alexandre.localmusic`) et le doss
 local `Documents/LocalMusic` restent inchangés pour préserver les données
 existantes. Le workflow GitHub Actions détecte désormais le nom du projet iOS
 généré. Voir `V1_5_1_CHANGES.md`.
+
+
+## V1.5.2 — personnalisation des pochettes
+
+Menu `•••` d’un morceau → Modifier la pochette → Photos/Fichiers. Voir `V1_5_2_CHANGES.md`.
