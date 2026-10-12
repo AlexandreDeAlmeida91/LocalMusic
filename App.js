@@ -254,7 +254,7 @@ function LibraryScreen() {
   const confirmDeleteSong = (song) => {
     Alert.alert(
       'Supprimer le morceau ?',
-      `« ${song.title} » sera supprimé de LocalMusic et de toutes les playlists.`,
+      `« ${song.title} » sera supprimé de Peak Music et de toutes les playlists.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -474,7 +474,7 @@ function LibraryScreen() {
     <>
       <View style={styles.header}>
         <View>
-          <Text style={styles.heading}>Ma musique</Text>
+          <Text style={styles.heading}>Peak Music</Text>
         </View>
 
         <Pressable

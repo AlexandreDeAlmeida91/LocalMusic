@@ -227,3 +227,12 @@ La V1.4.2 rend le stockage portable entre les conteneurs iOS et protège les pla
 ## V1.5.0 — thème Neon
 
 Refonte graphique sombre/violette. Voir `V1_5_0_CHANGES.md`.
+
+
+## V1.5.1 — Peak Music
+
+L'application est désormais affichée sous le nom **Peak Music** avec une nouvelle
+icône gothique rouge/noir. Le bundle ID (`com.alexandre.localmusic`) et le dossier
+local `Documents/LocalMusic` restent inchangés pour préserver les données
+existantes. Le workflow GitHub Actions détecte désormais le nom du projet iOS
+généré. Voir `V1_5_1_CHANGES.md`.

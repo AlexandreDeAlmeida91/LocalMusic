@@ -45,9 +45,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Expo derives the Xcode workspace/scheme from the visible app name.
+          # Resolve the generated workspace rather than hardcoding LocalMusic.
+          APP_WORKSPACE="$(find ios -maxdepth 1 -type d -name '*.xcworkspace' -print -quit)"
+          if [ -z "$APP_WORKSPACE" ]; then
+            echo "No iOS .xcworkspace was generated"
+            exit 1
+          fi
+          APP_SCHEME="$(basename "$APP_WORKSPACE" .xcworkspace)"
+          echo "Workspace: $APP_WORKSPACE | Scheme: $APP_SCHEME"
+
           xcodebuild \
-            -workspace ios/LocalMusic.xcworkspace \
-            -scheme LocalMusic \
+            -workspace "$APP_WORKSPACE" \
+            -scheme "$APP_SCHEME" \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath "$PWD/build" \
@@ -73,15 +83,15 @@ jobs:
           mkdir Payload
           cp -R "$APP_PATH" Payload/
 
-          /usr/bin/zip -qry LocalMusic-unsigned.ipa Payload
+          /usr/bin/zip -qry PeakMusic-unsigned.ipa Payload
 
           echo "Created:"
-          ls -lh LocalMusic-unsigned.ipa
+          ls -lh PeakMusic-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: LocalMusic-iOS-IPA
-          path: LocalMusic-unsigned.ipa
+          name: PeakMusic-iOS-IPA
+          path: PeakMusic-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
