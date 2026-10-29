@@ -32,6 +32,9 @@ jobs:
       - name: Check Expo project
         run: npx expo-doctor
 
+      - name: Test link import
+        run: npm run test:import
+
       - name: Generate native iOS project
         run: npx expo prebuild --platform ios --clean --no-install
 

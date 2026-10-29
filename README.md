@@ -1,4 +1,6 @@
-# LocalMusic Expo V1
+# Peak Music 1.6.0 — import local (bêta)
+
+Pour la nouvelle fonction **YouTube / SoundCloud / Spotify**, lire **[INSTALLATION_V1_6.md](INSTALLATION_V1_6.md)**. Cette livraison contient les sources et nécessite une nouvelle IPA compilée.
 
 Une application React Native + Expo qui permet d'importer des fichiers MP3 depuis l'app **Fichiers** de l'iPhone, de les copier dans le stockage privé de l'application et de les écouter hors ligne.
 
@@ -53,7 +55,7 @@ Lance :
 npx expo start
 ```
 
-Tu peux utiliser Expo Go pour tester une grande partie de l'interface.
+Le lecteur et le moteur d’import nécessitent une version native compilée ; Expo Go ne suffit pas.
 
 Important : la configuration native `enableBackgroundPlayback` n'est réellement appliquée qu'après création d'un build natif. Pour tester correctement la lecture en arrière-plan / écran verrouillé, utilise un build EAS.
 

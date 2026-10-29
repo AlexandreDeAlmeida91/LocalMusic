@@ -14,6 +14,7 @@ import {
 } from '@rntp/player';
 import {
   deleteSongFile,
+  commitDownloadedSong,
   loadLibrary,
   pickAndImportSongs,
   saveLibrary
@@ -45,6 +46,8 @@ const MusicContext = createContext(null);
 
 export function MusicProvider({ children }) {
   const [songs, setSongs] = useState([]);
+  const songsRef = useRef(songs);
+  songsRef.current = songs;
   const [playlists, setPlaylists] = useState([]);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -283,6 +286,13 @@ export function MusicProvider({ children }) {
       TrackPlayer.setRepeatMode(nativeRepeatMode(nextMode));
     }
   }, [playerReady, repeatMode]);
+
+  const acceptDownloadedSong = useCallback(async (download) => {
+    const result = await commitDownloadedSong(download, songsRef.current);
+    songsRef.current = result.songs;
+    setSongs(result.songs);
+    return result;
+  }, []);
 
   const importSongs = useCallback(async () => {
     setImporting(true);
@@ -751,6 +761,7 @@ export function MusicProvider({ children }) {
     setPlayerVisible,
 
     importSongs,
+    acceptDownloadedSong,
     removeSong,
     addOrReplaceLyrics,
     removeLyrics,

@@ -19,6 +19,7 @@ import SongRow from './src/components/SongRow';
 import PlaybackModeBar from './src/components/PlaybackModeBar';
 import PlaylistArtwork from './src/components/PlaylistArtwork';
 import AmbientBackground from './src/components/AmbientBackground';
+import LinkImportModal from './src/components/LinkImportModal';
 import { ensurePlayer } from './src/services/player';
 
 function SegmentedControl({ value, onChange }) {
@@ -211,6 +212,7 @@ function LibraryScreen() {
     error,
     clearError,
     importSongs,
+    acceptDownloadedSong,
     removeSong,
     addOrReplaceLyrics,
     removeLyrics,
@@ -230,6 +232,12 @@ function LibraryScreen() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [manageSongsVisible, setManageSongsVisible] = useState(false);
+  const [linkImportVisible, setLinkImportVisible] = useState(false);
+  const addMusic = () => Alert.alert('Ajouter un morceau', '', [
+    { text: 'Coller un lien', onPress: () => setLinkImportVisible(true) },
+    { text: 'Importer un fichier', onPress: importSongs },
+    { text: 'Annuler', style: 'cancel' }
+  ]);
 
   const selectedPlaylist = playlists.find(
     (playlist) => playlist.id === selectedPlaylistId
@@ -508,7 +516,7 @@ function LibraryScreen() {
         </View>
 
         <Pressable
-          onPress={importSongs}
+          onPress={addMusic}
           disabled={importing}
           style={({ pressed }) => [
             styles.addButton,
@@ -534,16 +542,16 @@ function LibraryScreen() {
           <Text style={styles.emptyIcon}>♫</Text>
           <Text style={styles.emptyTitle}>Aucune musique</Text>
           <Text style={styles.emptyText}>
-            Importe tes fichiers MP3 depuis l’app Fichiers de ton iPhone.
+            Colle un lien ou importe un fichier audio depuis ton iPhone.
           </Text>
 
           <Pressable
-            onPress={importSongs}
+            onPress={addMusic}
             disabled={importing}
             style={styles.importButton}
           >
             <Text style={styles.importButtonText}>
-              {importing ? 'Importation…' : 'Importer des MP3'}
+              {importing ? 'Importation…' : 'Ajouter un morceau'}
             </Text>
           </Pressable>
         </View>
@@ -656,6 +664,7 @@ function LibraryScreen() {
 
       <MiniPlayer />
       <PlayerModal />
+      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} />
 
       <CreatePlaylistModal
         visible={createVisible}

@@ -266,7 +266,7 @@ async function recoverOrphanSongs(existingSongs) {
     if (knownFileNames.has(fileName)) continue;
 
     const lower = fileName.toLowerCase();
-    if (!lower.endsWith('.mp3')) continue;
+    if (!/\.(mp3|m4a)$/.test(lower)) continue;
 
     const id = songIdFromFileName(fileName);
     const audioPath = `Music/${fileName}`;
@@ -520,4 +520,42 @@ export async function deleteSongFile(song) {
       // was already missing.
     }
   }
+}
+
+// Native imports arrive in the app cache, then move into the same durable library
+// as manually imported files. Commit metadata before exposing the song in the UI.
+export async function commitDownloadedSong(download, songs) {
+  await ensureStorage();
+  const duplicate = songs.find(song => song.sourceKey === download.sourceKey ||
+    (download.youtubeID && song.youtubeID === download.youtubeID));
+  if (duplicate) {
+    await FileSystem.deleteAsync(download.uri, { idempotent: true });
+    return { songs, song: duplicate, duplicate: true };
+  }
+  if (!['mp3', 'm4a'].includes(download.extension) ||
+      !download.uri?.startsWith(FileSystem.cacheDirectory)) {
+    throw new Error('Le moteur a renvoyé un fichier non valide.');
+  }
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  const fileName = `${id}.${download.extension}`;
+  const audioPath = `Music/${fileName}`;
+  const uri = resolveLocalPath(audioPath);
+  const song = {
+    id, fileName, audioPath, uri,
+    originalName: `${download.title}.${download.extension}`,
+    title: download.title, artist: download.artist, album: '',
+    duration: download.duration, sourceKey: download.sourceKey,
+    sourceUrl: download.sourceUrl, youtubeID: download.youtubeID,
+    artworkPath: null, artworkUri: null, customArtworkPath: null,
+    lyricsPath: null, lyricsUri: null, addedAt: new Date().toISOString()
+  };
+  const merged = [...songs, song].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
+  await FileSystem.moveAsync({ from: download.uri, to: uri });
+  try {
+    await saveLibrary(merged);
+  } catch (error) {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+    throw error;
+  }
+  return { songs: merged, song, duplicate: false };
 }

@@ -6,6 +6,6 @@ web-build/
 .DS_Store
 .env
 .env.*
-ios/
+/ios/
 Payload/
 *.ipa
