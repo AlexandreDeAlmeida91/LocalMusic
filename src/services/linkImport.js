@@ -12,6 +12,14 @@ let soundcloudClientExpires = 0;
 // Request the desktop page consistently, including when following shared links.
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
+function checkCancelled(signal) {
+  if (signal?.aborted) {
+    const error = new Error('Import annulé.');
+    error.name = 'AbortError';
+    throw error;
+  }
+}
+
 export function assertImportEngine() {
   if (!engine) throw new Error('Installe la nouvelle version iOS compilée de Peak Music : le moteur ne fonctionne pas dans Expo Go ni dans une ancienne IPA.');
 }
@@ -27,7 +35,7 @@ function trustedURL(raw, domains) {
 }
 
 export async function requestText(url, signal, onResponse, request = {}) {
-  signal?.throwIfAborted?.();
+  checkCancelled(signal);
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort);
@@ -175,7 +183,7 @@ export async function expandImportLinks(rawLinks, signal, status) {
     });
   };
   for (const raw of rawLinks) {
-    signal?.throwIfAborted();
+    checkCancelled(signal);
     try {
       let link = parseMusicLink(raw);
       if (link.provider === 'redirect') {
@@ -226,7 +234,7 @@ export async function expandImportLinks(rawLinks, signal, status) {
         const playlist = hydration?.find?.(v => v.hydratable === 'playlist')?.data;
         if (playlist?.tracks) {
           for (let track of playlist.tracks) {
-            signal?.throwIfAborted();
+            checkCancelled(signal);
             if (!track.permalink_url && track.id) {
               track = JSON.parse(await requestText(`https://api-v2.soundcloud.com/tracks/${encodeURIComponent(track.id)}?client_id=${await clientID(html, signal)}`, signal));
             }

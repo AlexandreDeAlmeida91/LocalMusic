@@ -64,7 +64,7 @@ export function songToMediaItem(song) {
     artist: song.artist,
     albumTitle: song.album,
     artworkUrl: artwork,
-    mimeType: 'audio/mpeg',
+    mimeType: /\.m4a(?:$|[?#])/i.test(song.uri || '') ? 'audio/mp4' : /\.mp3(?:$|[?#])/i.test(song.uri || '') ? 'audio/mpeg' : undefined,
     extras: {
       localMusicSongId: song.id
     }

@@ -1,6 +1,6 @@
 {
   "name": "local-music-expo-v1",
-  "version": "1.7.0",
+  "version": "1.7.2",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "doctor": "npx expo-doctor",
     "build:ios:preview": "eas build --platform ios --profile preview",
     "build:ios:production": "eas build --platform ios --profile production",
-    "test:import": "node --test tests/link-import.test.cjs"
+    "test:import": "node --test tests/*.test.cjs",
+    "postinstall": "node scripts/patch-player-duration.cjs"
   },
   "dependencies": {
     "@react-native-community/slider": "5.2.0",

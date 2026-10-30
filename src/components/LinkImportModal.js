@@ -119,7 +119,10 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
         }
       }
     } catch (e) {
-      if (!controller.signal.aborted) setError(readableImportError(e));
+      if (!controller.signal.aborted) {
+        setError(readableImportError(e));
+        setRows(currentRows => currentRows.map(row => row.status === 'En attente' ? { ...row, status: 'Échec', detail: readableImportError(e) } : row));
+      }
     } finally {
       if (controller.signal.aborted) setRows(currentRows => currentRows.map(row => row.status === 'En attente' ? { ...row, status: 'Annulé' } : row));
       operation.current = null;

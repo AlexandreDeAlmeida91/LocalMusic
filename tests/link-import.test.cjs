@@ -264,3 +264,16 @@ test('SoundCloud playlist resolves missing track details', async () => {
   assert.deepEqual(result.links, ['https://soundcloud.com/artist/song']);
   assert.equal(result.warnings.length, 0);
 });
+
+test('mobile AbortSignal without throwIfAborted accepts a single video', async () => {
+  const service = soundcloudService(async () => { throw new Error('Unexpected network'); });
+  const signal = { aborted: false, addEventListener() {}, removeEventListener() {} };
+  const result = await service.expandImportLinks(['https://youtu.be/Bpaf6Dm9iRc'], signal, () => {});
+  assert.deepEqual(result.links, ['https://www.youtube.com/watch?v=Bpaf6Dm9iRc']);
+});
+test('mobile AbortSignal without throwIfAborted still cancels before networking', async () => {
+  const service = soundcloudService(async () => { throw new Error('Unexpected network'); });
+  const signal = { aborted: true, addEventListener() {}, removeEventListener() {} };
+  await assert.rejects(service.expandImportLinks(['https://youtu.be/Bpaf6Dm9iRc'], signal, () => {}), { name: 'AbortError' });
+  await assert.rejects(service.requestText('https://www.youtube.com', signal), { name: 'AbortError' });
+});

@@ -28,3 +28,7 @@ Les fichiers `meriyah.umd.js`, `astring.umd.js` et `yt_ejs_helper.js` proviennen
 - yt-dlp/ejs : https://github.com/yt-dlp/ejs — Unlicense, indiquée dans l’en-tête du helper et conservée dans `Resources/EJS-LICENSE`.
 
 Ces ressources sont embarquées et exécutées sur le téléphone. Aucun service de conversion ou d’extraction distant n’est utilisé.
+
+## Correctif local RNTP 5.9.2 (1.7.1)
+
+Le script `scripts/patch-player-duration.cjs` ajoute l’option AVFoundation de durée précise pour les URL de fichiers dans AVPlayerEngine. Il s’applique après installation npm, avec garde de version et vérification de la source attendue. La licence du fournisseur reste inchangée.

@@ -177,7 +177,7 @@ public class PeakImportModule: Module {
 
     try Task.checkCancellation()
     self.progress(jobID, "Vérification du morceau…")
-    let asset = AVURLAsset(url: output)
+    let asset = AVURLAsset(url: output, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
     let audio = try await asset.loadTracks(withMediaType: .audio)
     let duration = try await asset.load(.duration).seconds
     guard !audio.isEmpty, duration.isFinite, duration > 1 else {
