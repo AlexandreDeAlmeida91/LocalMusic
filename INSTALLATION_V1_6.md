@@ -1,3 +1,5 @@
+> Version actuelle : 1.7.0. Consulte PLAYLISTS_1_7.md pour les fonctions et limites à jour. Les indications 1.6 ci-dessous décrivent la version précédente.
+
 # Peak Music 1.6.1 — import local (bêta)
 
 Cette archive contient le **projet source complet**, pas une IPA déjà compilée.

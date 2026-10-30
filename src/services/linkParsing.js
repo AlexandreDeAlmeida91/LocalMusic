@@ -8,12 +8,15 @@ export function parseMusicLink(raw) {
   const host = url.hostname.toLowerCase();
   const parts = url.pathname.split('/').filter(Boolean);
   if (['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(host)) {
+    const list = url.searchParams.get('list');
+    if (parts[0] === 'playlist' && /^[A-Za-z0-9_-]+$/.test(list || '')) return { provider: 'youtube', playlist: true, id: list, url: `https://www.youtube.com/playlist?list=${list}` };
     const id = host === 'youtu.be' ? parts[0] : parts[0] === 'watch' ? url.searchParams.get('v') : ['shorts', 'embed', 'live'].includes(parts[0]) ? parts[1] : null;
     if (!/^[\w-]{11}$/.test(id || '')) throw new Error('Utilise le lien d’un morceau ou d’une vidéo YouTube, pas celui d’une playlist.');
     return { provider: 'youtube', id, sourceKey: `youtube:${id}`, url: `https://www.youtube.com/watch?v=${id}` };
   }
   if (host === 'open.spotify.com') {
     if (/^intl-[a-z-]+$/i.test(parts[0])) parts.shift();
+    if (parts[0] === 'playlist' && /^[a-zA-Z0-9]{22}$/.test(parts[1] || '')) return { provider: 'spotify', playlist: true, id: parts[1], url: `https://open.spotify.com/playlist/${parts[1]}` };
     if (parts[0] !== 'track' || !/^[a-zA-Z0-9]{22}$/.test(parts[1] || '')) throw new Error('Utilise un lien Spotify vers un morceau individuel.');
     return { provider: 'spotify', id: parts[1], sourceKey: `spotify:${parts[1]}`, url: `https://open.spotify.com/track/${parts[1]}` };
   }
@@ -22,6 +25,7 @@ export function parseMusicLink(raw) {
     return { provider: 'redirect', url: url.href };
   }
   if (['soundcloud.com', 'www.soundcloud.com', 'm.soundcloud.com'].includes(host)) {
+    if (parts.length === 3 && parts[1] === 'sets') return { provider: 'soundcloud', playlist: true, url: `https://soundcloud.com/${parts.join('/')}` };
     if (parts.length !== 2 || ['sets', 'tracks', 'likes', 'reposts', 'albums'].includes(parts[1])) throw new Error('Utilise un lien SoundCloud vers un morceau individuel.');
     const clean = `https://soundcloud.com/${parts.join('/')}`;
     return { provider: 'soundcloud', url: clean, sourceKey: clean };

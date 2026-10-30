@@ -44,8 +44,8 @@ test('normalizes YouTube, Spotify locale and SoundCloud links', () => {
 });
 test('rejects spoofed hosts, credentials, unsupported playlists and malformed IDs', () => {
   for (const url of ['https://youtube.com.evil.test/watch?v=abcdefghijk', 'https://youtube.com@evil.test/watch?v=abcdefghijk',
-    'file:///private/file', 'https://open.spotify.com/playlist/123', 'https://youtube.com/playlist?list=123',
-    'https://soundcloud.com/artist/sets/collection', 'https://youtu.be/short', 'https://localhost/watch?v=abcdefghijk']) {
+    'file:///private/file', 'https://open.spotify.com/playlist/123', 'https://youtube.com/playlist',
+    'https://soundcloud.com/artist/likes', 'https://youtu.be/short', 'https://localhost/watch?v=abcdefghijk']) {
     assert.throws(() => p.parseMusicLink(url));
   }
 });
@@ -212,7 +212,7 @@ test('protected SoundCloud offers YouTube selection without requesting protected
       scHTML({ ...scTrack, media: { transcodings: [{ ...scFormat, format: { protocol: 'ctr-encrypted-hls', mime_type: 'audio/mp4' } }] } }));
   });
   const result = await service.prepareMusicLink('https://soundcloud.com/artist/song', undefined, () => {});
-  assert.equal(result.videoID, null);
+  assert.equal(result.videoID, id);
   assert.equal(result.mediaURL, undefined);
   assert.equal(result.candidates[0].id, id);
   assert.match(result.matchReason, /choisir une version YouTube/);
@@ -234,4 +234,33 @@ test('fresh SoundCloud page client replaces cached client', async () => {
 test('native error presentation preserves cause and removes Expo internals', () => {
   assert.equal(p.readableImportError(new Error('UnexpectedException: Téléchargement refusé (403). (at ExpoModulesCore/ConcurrentFunctionDefinition.swift:90)')), 'Téléchargement refusé (403).');
   assert.equal(p.readableImportError(new Error('Disque plein')), 'Disque plein');
+});
+
+test('expands YouTube playlist continuation and deduplicates tracks', async () => {
+  const first = { contents: [{ playlistVideoRenderer: { videoId: id } }, { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: 'next' } } } }] };
+  let calls = 0;
+  const service = soundcloudService(async (url, opts) => {
+    calls++;
+    if (opts.method === 'POST') {
+      assert.equal(JSON.parse(opts.body).continuation, 'next');
+      return response(url, JSON.stringify({ contents: [{ playlistVideoRenderer: { videoId: id } }, { playlistVideoRenderer: { videoId: 'bbbbbbbbbbb' } }] }));
+    }
+    return response(url, 'var ytInitialData = ' + JSON.stringify(first) + '; ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"clientName":"WEB"}}});');
+  });
+  const result = await service.expandImportLinks(['https://youtube.com/playlist?list=PLabc'], undefined, () => {});
+  assert.equal(result.links.length, 2);
+  assert.equal(result.warnings.length, 0);
+  assert.equal(calls, 2);
+});
+test('Spotify embed expansion warns about incomplete public views', async () => {
+  const service = soundcloudService(async url => response(url, '<script id="__NEXT_DATA__">' + JSON.stringify({ trackList: [{ uri: `spotify:track:${spotifyID}` }] }) + '</script>'));
+  const result = await service.expandImportLinks([`https://open.spotify.com/playlist/${spotifyID}`], undefined, () => {});
+  assert.equal(result.links[0], `https://open.spotify.com/track/${spotifyID}`);
+  assert.equal(result.warnings.length, 1);
+});
+test('SoundCloud playlist resolves missing track details', async () => {
+  const service = soundcloudService(async url => response(url, url.includes('api-v2') ? JSON.stringify({ permalink_url: 'https://soundcloud.com/artist/song' }) : 'window.__sc_hydration = ' + JSON.stringify([{ hydratable: 'playlist', data: { track_count: 1, tracks: [{ id: 1 }] } }, { hydratable: 'apiClient', data: { id: 'a'.repeat(32) } }]) + ';'));
+  const result = await service.expandImportLinks(['https://soundcloud.com/artist/sets/collection'], undefined, () => {});
+  assert.deepEqual(result.links, ['https://soundcloud.com/artist/song']);
+  assert.equal(result.warnings.length, 0);
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
+import { youtubeFallback, expandImportLinks, assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
 import { readableImportError } from '../services/linkParsing';
 
 export default function LinkImportModal({ visible, onClose, onImported }) {
@@ -50,7 +50,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
   const start = async () => {
     if (operation.current) return;
     setError('');
-    const links = [...new Set(input.split(/[;\n\r]+/).map(s => s.trim()).filter(Boolean))];
+    let links = [...new Set(input.split(/[;\n\r]+/).map(s => s.trim()).filter(Boolean))];
     if (!links.length || links.length > 20) { setError('Colle entre 1 et 20 liens, séparés par des ; ou des retours à la ligne.'); return; }
     try { assertImportEngine(); } catch (e) { setError(e.message); return; }
     const controller = new AbortController();
@@ -60,6 +60,10 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
     setRows(links.map(url => ({ url, status: 'En attente' })));
     let completed = 0;
     try {
+      const expanded = await expandImportLinks(links, controller.signal, setPhase);
+      links = expanded.links;
+      if (expanded.warnings.length) setError(expanded.warnings.join('\n'));
+      setRows(links.map(url => ({ url, status: 'En attente' })));
       for (let i = 0; i < links.length; i++) {
         if (controller.signal.aborted) break;
         current.jobID = `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
@@ -67,7 +71,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
         setFraction(null);
         updateRow(i, { status: 'Recherche…' });
         try {
-          const prepared = await prepareMusicLink(links[i], controller.signal, setPhase);
+          let prepared = await prepareMusicLink(links[i], controller.signal, setPhase);
           if (controller.signal.aborted) throw new Error('Annulé');
           if (prepared.candidates?.length && !prepared.videoID) {
             setPhase('Choisis la bonne version YouTube');
@@ -82,7 +86,23 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
           }
           if (controller.signal.aborted) throw new Error('Annulé');
           updateRow(i, { status: 'Téléchargement…', title: prepared.metadata?.title });
-          downloaded = await downloadPrepared(prepared, current.jobID);
+          try {
+            downloaded = await downloadPrepared(prepared, current.jobID);
+          } catch (directError) {
+            if (controller.signal.aborted) throw directError;
+            prepared = await youtubeFallback(prepared, controller.signal, setPhase);
+            if (!prepared.videoID) {
+              const selected = await new Promise(resolve => { choose.current = resolve; setChoice(prepared); });
+              choose.current = null;
+              setChoice(null);
+              if (!selected) { updateRow(i, { status: 'Ignoré' }); continue; }
+              prepared.videoID = selected;
+            }
+            if (controller.signal.aborted) throw new Error('Annulé');
+            // A fresh job ID prevents cancellation bookkeeping from affecting retry.
+            current.jobID += '-youtube';
+            downloaded = await downloadPrepared(prepared, current.jobID);
+          }
           if (controller.signal.aborted) throw new Error('Annulé');
           current.saving = true;
           setPhase('Ajout à la bibliothèque…');
@@ -98,6 +118,8 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
           if (downloaded?.uri) await FileSystem.deleteAsync(downloaded.uri, { idempotent: true }).catch(() => {});
         }
       }
+    } catch (e) {
+      if (!controller.signal.aborted) setError(readableImportError(e));
     } finally {
       if (controller.signal.aborted) setRows(currentRows => currentRows.map(row => row.status === 'En attente' ? { ...row, status: 'Annulé' } : row));
       operation.current = null;
@@ -118,11 +140,11 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
         <Text style={styles.hint}>YouTube · SoundCloud · Spotify</Text>
-        <Text style={styles.hint}>Colle un ou plusieurs liens séparés par des ;. Garde Peak Music ouvert pendant l’import.</Text>
+        <Text style={styles.hint}>Colle des liens de morceaux ou de playlists publiques séparés par des ;. Garde Peak Music ouvert pendant l’import.</Text>
         <TextInput value={input} onChangeText={setInput} editable={!busy} multiline autoCapitalize="none" autoCorrect={false}
           keyboardType="url" placeholder="https://… ; https://…" placeholderTextColor="#8e88a9" style={styles.input}
           accessibilityLabel="Liens des morceaux" />
-        <Text style={styles.small}>Spotify recherche le morceau sur YouTube. L’audio est conservé en M4A ou MP3 sur cet iPhone.</Text>
+        <Text style={styles.small}>Spotify et les morceaux SoundCloud incompatibles sont recherchés sur YouTube. Une correspondance claire est sélectionnée automatiquement. L’audio est conservé en M4A ou MP3 sur cet iPhone.</Text>
         {!!error && <Text style={styles.error}>{error}</Text>}
         <Pressable onPress={busy ? cancel : start} accessibilityRole="button" style={styles.primary}>
           <Text style={styles.primaryText}>{busy ? 'Annuler l’import' : 'Télécharger'}</Text>
