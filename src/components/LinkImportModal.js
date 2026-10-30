@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
+import { readableImportError } from '../services/linkParsing';
 
 export default function LinkImportModal({ visible, onClose, onImported }) {
   const [input, setInput] = useState('');
@@ -68,7 +69,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
         try {
           const prepared = await prepareMusicLink(links[i], controller.signal, setPhase);
           if (controller.signal.aborted) throw new Error('Annulé');
-          if (prepared.provider === 'spotify' && !prepared.videoID) {
+          if (prepared.candidates?.length && !prepared.videoID) {
             setPhase('Choisis la bonne version YouTube');
             const selected = await new Promise(resolve => { choose.current = resolve; setChoice(prepared); });
             choose.current = null;
@@ -91,7 +92,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
           updateRow(i, { title: result.song.title, status: result.duplicate ? 'Déjà dans la bibliothèque' : 'Ajouté ✓' });
           completed++;
         } catch (e) {
-          updateRow(i, { status: controller.signal.aborted ? 'Annulé' : 'Échec', detail: controller.signal.aborted ? '' : e?.message || 'Import impossible.' });
+          updateRow(i, { status: controller.signal.aborted ? 'Annulé' : 'Échec', detail: controller.signal.aborted ? '' : readableImportError(e) });
         } finally {
           current.saving = false;
           if (downloaded?.uri) await FileSystem.deleteAsync(downloaded.uri, { idempotent: true }).catch(() => {});
@@ -132,7 +133,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
         </View>}
         {choice && <View style={styles.card}>
           <Text style={styles.title}>{choice.metadata.artist} — {choice.metadata.title}</Text>
-          <Text style={styles.hint}>Plusieurs versions possibles : sélectionne celle à importer.</Text>
+          <Text style={styles.hint}>{choice.matchReason || 'Plusieurs versions possibles : sélectionne celle à importer.'}</Text>
           {choice.candidates.map(candidate => <Pressable key={candidate.id} style={styles.candidate}
             onPress={() => choose.current?.(candidate.id)} accessibilityRole="button">
             <Text style={styles.title}>{candidate.title}</Text>

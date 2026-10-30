@@ -2,12 +2,15 @@ import { requireOptionalNativeModule } from 'expo';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   parseMusicLink, spotifyMetadata, youtubeCandidates, rankCandidates,
-  automaticCandidate, soundcloudTrack, soundcloudFormats, embeddedJSON, validateSoundcloudTrack
+  automaticCandidate, soundcloudTrack, soundcloudFormats, embeddedJSON, validateSoundcloudTrack, readableImportError
 } from './linkParsing';
 
 const engine = requireOptionalNativeModule('PeakImport');
 let soundcloudClientID = null;
-const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1';
+let soundcloudClientExpires = 0;
+// The mobile SoundCloud site serves a different React page without sc_hydration.
+// Request the desktop page consistently, including when following shared links.
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 export function assertImportEngine() {
   if (!engine) throw new Error('Installe la nouvelle version iOS compilée de Peak Music : le moteur ne fonctionne pas dans Expo Go ni dans une ancienne IPA.');
@@ -47,21 +50,32 @@ export async function requestText(url, signal, onResponse) {
 }
 
 async function clientID(html, signal) {
-  if (soundcloudClientID) return soundcloudClientID;
   const hydration = embeddedJSON(html, 'window.__sc_hydration =');
   const pageClient = hydration?.find?.(entry => entry.hydratable === 'apiClient')?.data?.id;
   if (/^[a-zA-Z0-9]{32}$/.test(pageClient || '')) {
     soundcloudClientID = pageClient;
+    soundcloudClientExpires = Date.now() + 5 * 60 * 1000;
     return pageClient;
   }
+  if (soundcloudClientID && Date.now() < soundcloudClientExpires) return soundcloudClientID;
   const scripts = [...html.matchAll(/<script\b[^>]*\bsrc=["'](https:\/\/[^"']+)["']/gi)]
     .map(m => m[1]).filter(url => { try { trustedURL(url, ['sndcdn.com']); return true; } catch { return false; } });
   for (const url of scripts.reverse().slice(0, 6)) {
     const js = await requestText(url, signal);
     const id = js.match(/client_id\s*:\s*"([a-zA-Z0-9]{32})"/)?.[1];
-    if (id) { soundcloudClientID = id; return id; }
+    if (id) {
+      soundcloudClientID = id;
+      soundcloudClientExpires = Date.now() + 5 * 60 * 1000;
+      return id;
+    }
   }
-  throw new Error('Le lecteur SoundCloud a changé : impossible de récupérer le flux pour le moment.');
+  throw new Error('SoundCloud n’a pas fourni les données de son lecteur. La page peut être bloquée ou demander une vérification dans Safari.');
+}
+
+async function youtubeMatches(metadata, signal, status) {
+  status(`Recherche YouTube : ${metadata.artist} — ${metadata.title}`);
+  const query = encodeURIComponent(`${metadata.artist} ${metadata.title} official audio`);
+  return rankCandidates(youtubeCandidates(await requestText(`https://www.youtube.com/results?search_query=${query}`, signal)), metadata);
 }
 
 export async function prepareMusicLink(raw, signal, status) {
@@ -86,9 +100,7 @@ export async function prepareMusicLink(raw, signal, status) {
   if (link.provider === 'spotify') {
     status('Lecture du titre et de l’artiste sur Spotify…');
     const metadata = spotifyMetadata(await requestText(`https://open.spotify.com/embed/track/${link.id}`, signal), link.id);
-    status(`Recherche YouTube : ${metadata.artist} — ${metadata.title}`);
-    const query = encodeURIComponent(`${metadata.artist} ${metadata.title} official audio`);
-    const ranked = rankCandidates(youtubeCandidates(await requestText(`https://www.youtube.com/results?search_query=${query}`, signal)), metadata);
+    const ranked = await youtubeMatches(metadata, signal, status);
     if (!ranked.length) throw new Error('Aucune correspondance YouTube trouvée. Essaie un lien YouTube direct.');
     return { ...link, metadata, candidates: ranked.slice(0, 8), videoID: automaticCandidate(ranked)?.id || null };
   }
@@ -99,8 +111,20 @@ export async function prepareMusicLink(raw, signal, status) {
     validateSoundcloudTrack(JSON.parse(await requestText(
       `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(link.url)}&client_id=${await clientID(html, signal)}`, signal)));
   const formats = soundcloudFormats(track);
-  if (!formats.length) throw new Error('Ce morceau ne propose pas de flux MP3 ou AAC complet compatible. Les extraits et les flux protégés ne sont pas importés.');
   const metadata = { title: track.title, artist: track.user?.username || 'SoundCloud', duration: track.duration / 1000 };
+  if (!formats.length) {
+    const explanation = 'Ce morceau SoundCloud ne propose pas de flux complet compatible. Tu peux choisir une version YouTube à la place.';
+    let ranked;
+    try { ranked = await youtubeMatches(metadata, signal, status); }
+    catch (error) {
+      if (signal?.aborted) throw error;
+      throw new Error(`${explanation} La recherche YouTube a également échoué : ${readableImportError(error)}`);
+    }
+    if (!ranked.length) throw new Error('Aucun flux SoundCloud compatible et aucune version YouTube trouvée pour ce morceau.');
+    // A change of audio source always requires the user's selection, even when
+    // the title, artist and duration provide a confident match.
+    return { ...link, sourceKey: `soundcloud:${track.id}`, metadata, candidates: ranked.slice(0, 8), videoID: null, matchReason: explanation };
+  }
   let lastError;
   for (const format of formats) {
     try {

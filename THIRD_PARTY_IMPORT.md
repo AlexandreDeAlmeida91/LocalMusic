@@ -12,7 +12,10 @@ Modifications pour Peak Music :
 - chargement des ressources JavaScript depuis le bundle CocoaPods `PeakImportResources` ;
 - branche d’extraction distante désactivée (elle échoue explicitement) ;
 - suppression du client réseau d’extraction distante et de ses utilitaires dédiés ;
-- wrapper Expo pour l’extraction locale et le téléchargement.
+- wrapper Expo pour l’extraction locale et le téléchargement ;
+- conservation des URL alternatives par client au lieu de dédupliquer uniquement par itag ;
+- association de chaque flux à sa réponse et à ses en-têtes client ;
+- essais bornés des URL M4A après refus HTTP 403/410, avec une actualisation et une attente avant le premier accès.
 
 Le code du fournisseur est inclus dans le projet pour que la compilation ne dépende pas d’une branche GitHub flottante.
 

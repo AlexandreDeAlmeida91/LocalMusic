@@ -7,6 +7,11 @@ private struct ImportFailure: LocalizedError {
   var errorDescription: String? { message }
 }
 
+private struct MediaHTTPFailure: LocalizedError {
+  let status: Int
+  var errorDescription: String? { "Téléchargement refusé par le service (HTTP \(status))." }
+}
+
 private actor ImportJobs {
   var tasks: [String: Task<[String: String], Error>] = [:]
   var cancelled = Set<String>()
@@ -41,18 +46,36 @@ public class PeakImportModule: Module {
         }
         self.progress(jobID, "Recherche du flux audio…")
         // Explicit local-only extraction: never opt into YouTubeKit's remote fallback.
-        let video = YouTube(videoID: videoID, methods: [.local])
-        let streams = try await video.streams
-        try Task.checkCancellation()
-        guard let stream = streams.filterAudioOnly()
-          .filter({ $0.fileExtension == .m4a && $0.isNativelyPlayable })
-          .highestAudioBitrateStream() else {
-          throw ImportFailure(message: "YouTube ne fournit pas de flux audio M4A compatible pour ce lien.")
+        for round in 0..<2 {
+          try Task.checkCancellation()
+          let video = YouTube(videoID: videoID, methods: [.local])
+          let streams = try await video.streams
+          let candidates = streams.filterAudioOnly()
+            .filter({ $0.fileExtension == .m4a && $0.isNativelyPlayable })
+            .sorted { ($0.averageBitrate ?? $0.bitrate ?? 0) > ($1.averageBitrate ?? $1.bitrate ?? 0) }
+          guard !candidates.isEmpty else {
+            throw ImportFailure(message: "YouTube ne fournit pas de flux audio M4A compatible pour ce lien.")
+          }
+          let metadata = try? await video.metadata
+          // Some YouTube responses require a preroll delay BEFORE first CDN access.
+          // A refusal is not proof of that cause: also retain alternate client URLs.
+          self.progress(jobID, round == 0 ? "Préparation du téléchargement YouTube…" : "Actualisation des adresses audio YouTube…")
+          try await Task.sleep(nanoseconds: 6_000_000_000)
+          for (index, stream) in candidates.prefix(6).enumerated() {
+            try Task.checkCancellation()
+            if index > 0 { self.progress(jobID, "Essai d’une autre source audio YouTube…") }
+            do {
+              var result = try await self.download(stream.url, mode: "direct", ext: "m4a", jobID: jobID, headers: stream.downloadHeaders)
+              result["title"] = metadata?.title ?? "YouTube \(videoID)"
+              return result
+            } catch let error as MediaHTTPFailure where [403, 410].contains(error.status) {
+              // Try a distinct URL, then re-extract once. Never loop indefinitely
+              // or hide a persistent refusal behind a successful import status.
+              continue
+            }
+          }
         }
-        let metadata = try? await video.metadata
-        var result = try await self.download(stream.url, mode: "direct", ext: "m4a", jobID: jobID)
-        result["title"] = metadata?.title ?? "YouTube \(videoID)"
-        return result
+        throw ImportFailure(message: "YouTube refuse toujours l’accès au fichier audio (403/410), même après actualisation et essai des autres sources. Aucun morceau n’a été ajouté. Le blocage peut venir du lien, du réseau ou du moteur d’extraction.")
       }
     }
 
@@ -85,7 +108,7 @@ public class PeakImportModule: Module {
     }
   }
 
-  private func download(_ url: URL, mode: String, ext: String, jobID: String) async throws -> [String: String] {
+  private func download(_ url: URL, mode: String, ext: String, jobID: String, headers: [String: String] = [:]) async throws -> [String: String] {
     guard Self.allowed(url) else { throw ImportFailure(message: "Domaine audio non reconnu.") }
     let fm = FileManager.default
     let root = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("PeakImports", isDirectory: true)
@@ -99,6 +122,8 @@ public class PeakImportModule: Module {
     defer { if !success { try? fm.removeItem(at: output) } }
     let delegate = MediaRedirectGuard()
     let config = URLSessionConfiguration.ephemeral
+    config.httpAdditionalHeaders = headers
+    config.httpCookieStorage = HTTPCookieStorage.shared
     config.timeoutIntervalForRequest = 30
     config.timeoutIntervalForResource = 600
     let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -165,7 +190,7 @@ public class PeakImportModule: Module {
 
   fileprivate static func check(_ response: URLResponse) throws {
     guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-      throw ImportFailure(message: "Téléchargement refusé par le service (\((response as? HTTPURLResponse)?.statusCode ?? 0)). Réessaie plus tard.")
+      throw MediaHTTPFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0)
     }
   }
 

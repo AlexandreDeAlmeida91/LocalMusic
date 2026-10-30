@@ -133,3 +133,10 @@ export function soundcloudFormats(track) {
     return bitrate(b) - bitrate(a) || Number(b.format.protocol === 'progressive') - Number(a.format.protocol === 'progressive');
   });
 }
+
+export function readableImportError(error) {
+  return String(error?.message || 'Import impossible.')
+    .replace(/^(?:UnexpectedException|Exception|Error):\s*/i, '')
+    .replace(/\s*\(at\s+ExpoModulesCore\/[\s\S]*?\)\s*$/, '')
+    .trim();
+}

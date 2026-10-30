@@ -1,4 +1,4 @@
-# Peak Music 1.6.0 — import local (bêta)
+# Peak Music 1.6.1 — import local (bêta)
 
 Cette archive contient le **projet source complet**, pas une IPA déjà compilée.
 Le moteur iOS doit être compilé dans une nouvelle IPA : copier seulement les fichiers JavaScript ne suffit pas.
@@ -22,7 +22,7 @@ La compilation peut tourner sur GitHub pour préparer l’installation. **L’ut
 1. Ouvre **Morceaux → + → Coller un lien**.
 2. Colle un lien YouTube, SoundCloud ou Spotify. Tu peux en coller jusqu’à 20, séparés par des `;` ou des retours à la ligne.
 3. Appuie sur **Télécharger** et garde l’app ouverte, écran allumé, pendant l’import.
-4. Pour Spotify, choisis une version YouTube si la correspondance n’est pas suffisamment claire.
+4. Pour Spotify, choisis une version YouTube si la correspondance n’est pas suffisamment claire. Pour un morceau SoundCloud sans flux compatible, une version YouTube peut être proposée : le changement de source exige toujours ton choix.
 5. Ferme la fenêtre quand l’import est terminé. Le morceau est dans la bibliothèque et utilise le même menu de playlists que les fichiers importés.
 
 Les fichiers sont conservés dans `Documents/LocalMusic/Music` avec des chemins relatifs persistants.
@@ -34,7 +34,7 @@ Les noms internes sont uniques. Un même identifiant de source ou une même vid�
 - Morceaux et vidéos individuels. Les liens vers des playlists en ligne ne sont pas importés dans cette bêta.
 - Spotify fournit le titre, l’artiste et la durée. L’audio provient d’une correspondance YouTube ; aucun extrait Spotify de 30 secondes n’est utilisé.
 - YouTube : extraction locale avec YouTubeKit et JavaScriptCore ; flux audio M4A lisibles nativement sur iOS. Aucun serveur de repli.
-- SoundCloud : flux MP3 progressifs/HLS et AAC HLS en MP4 fragmenté, complets et non chiffrés. Les formats incompatibles sont signalés.
+- SoundCloud : flux MP3 progressifs/HLS et AAC HLS en MP4 fragmenté, complets et non chiffrés. En l’absence de flux compatible, une recherche YouTube est proposée avec choix explicite.
 - Pas de connexion aux comptes des plateformes ; les contenus privés, protégés, restreints ou bloqués peuvent échouer.
 - Les services peuvent modifier leurs pages ou bloquer les requêtes. Une mise à jour du moteur intégré peut alors nécessiter une nouvelle IPA.
 - L’import nécessite Internet. Après son enregistrement, l’écoute est hors ligne.
@@ -44,7 +44,7 @@ Les noms internes sont uniques. Un même identifiant de source ou une même vid�
 ## Validation de cette livraison
 
 Les tests JavaScript couvrent notamment les liens, les correspondances, les extraits refusés, les doublons, la persistance et l’échec d’écriture.
-La vérification Expo, la découverte du module natif et la génération du bundle iOS sont réalisées dans l’environnement de développement.
+Les 18 tests JavaScript et la génération du bundle iOS ont réussi. Les nouveaux tests utilisent des réponses simulées pour vérifier les liens courts SoundCloud, le renouvellement du client, le choix explicite de source et les erreurs lisibles.
 La récupération de métadonnées publiques Spotify/YouTube/SoundCloud a également été vérifiée.
 
 **La compilation Swift avec Xcode et le téléchargement/lecture hors ligne sur un vrai iPhone restent à valider.**

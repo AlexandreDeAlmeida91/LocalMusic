@@ -183,6 +183,8 @@ class InnerTube {
     }
     
     struct VideoInfo: Decodable {
+        // Set locally after decoding. Keep the media request's client identity.
+        var downloadHeaders: [String: String]?
         let playabilityStatus: PlayabilityStatus?
         let streamingData: StreamingData?
         let videoDetails: VideoDetails?
@@ -279,7 +281,13 @@ class InnerTube {
             URLQueryItem(name: "prettyPrint", value: "false")
         ].filter { !($0.value?.isEmpty ?? true) }
         let request = playerRequest(forVideoID: videoID)
-        return try await callAPI(endpoint: endpoint, query: query, object: request)
+        var response: VideoInfo = try await callAPI(endpoint: endpoint, query: query, object: request)
+        response.downloadHeaders = [
+            "User-Agent": headers["User-Agent"] ?? ytcfg.userAgent ?? "Mozilla/5.0",
+            "Origin": "https://www.youtube.com",
+            "Referer": "https://www.youtube.com/watch?v=\(videoID)"
+        ]
+        return response
     }
     
     // TODO: change result type

@@ -175,3 +175,63 @@ test('short audio is removed before it can enter the library', async () => {
   await assert.rejects(service.downloadPrepared({ videoID: id, metadata: { duration: 180 } }, 'job'), /plus court/);
   assert.deepEqual(removed, [download.uri]);
 });
+
+function soundcloudService(responder) {
+  return load('src/services/linkImport.js', {
+    expo: { requireOptionalNativeModule: () => ({}) },
+    'expo-file-system/legacy': {}, './linkParsing': p
+  }, { fetch: responder });
+}
+const scTrack = { id: 42, title: target.title, user: { username: target.artist }, kind: 'track', policy: 'MONETIZE', duration: 180000 };
+const scFormat = { url: 'https://api-v2.soundcloud.com/media/file', preset: 'mp3_0_128k', duration: 180000, format: { protocol: 'progressive', mime_type: 'audio/mpeg' } };
+function scHTML(track, client = 'a'.repeat(32)) {
+  return 'window.__sc_hydration = ' + JSON.stringify([{ hydratable: 'sound', data: track }, { hydratable: 'apiClient', data: { id: client } }]) + ';';
+}
+function response(url, body) { return { ok: true, url, text: async () => body }; }
+test('SoundCloud short links use desktop pages and canonicalize mobile redirects', async () => {
+  const requests = [];
+  const service = soundcloudService(async (url, options) => {
+    requests.push(url);
+    assert.doesNotMatch(options.headers['User-Agent'], /iPhone|Mobile/);
+    if (url.includes('on.soundcloud')) return response('https://m.soundcloud.com/artist/song?ref=share', 'mobile page');
+    if (url.includes('api-v2')) return response(url, JSON.stringify({ url: 'https://cf-media.sndcdn.com/audio.mp3' }));
+    assert.equal(url, 'https://soundcloud.com/artist/song');
+    return response(url, scHTML({ ...scTrack, media: { transcodings: [scFormat] } }));
+  });
+  const result = await service.prepareMusicLink('https://on.soundcloud.com/abc', undefined, () => {});
+  assert.equal(result.mode, 'direct');
+  assert.equal(result.sourceKey, 'soundcloud:42');
+  assert.equal(requests.length, 3);
+});
+test('protected SoundCloud offers YouTube selection without requesting protected media', async () => {
+  const requests = [];
+  const service = soundcloudService(async url => {
+    requests.push(url);
+    assert.ok(!url.includes('api-v2'));
+    return response(url, url.includes('youtube.com') ? searchHTML([{ id, title: 'Test Artist Northern Lights Official Audio', artist: target.artist, time: '3:00' }]) :
+      scHTML({ ...scTrack, media: { transcodings: [{ ...scFormat, format: { protocol: 'ctr-encrypted-hls', mime_type: 'audio/mp4' } }] } }));
+  });
+  const result = await service.prepareMusicLink('https://soundcloud.com/artist/song', undefined, () => {});
+  assert.equal(result.videoID, null);
+  assert.equal(result.mediaURL, undefined);
+  assert.equal(result.candidates[0].id, id);
+  assert.match(result.matchReason, /choisir une version YouTube/);
+  assert.equal(requests.length, 2);
+});
+test('fresh SoundCloud page client replaces cached client', async () => {
+  let client = 'a'.repeat(32);
+  const service = soundcloudService(async url => {
+    if (url.includes('api-v2')) {
+      assert.equal(new URL(url).searchParams.get('client_id'), client);
+      return response(url, JSON.stringify({ url: 'https://cf-media.sndcdn.com/audio.mp3' }));
+    }
+    return response(url, scHTML({ ...scTrack, media: { transcodings: [scFormat] } }, client));
+  });
+  await service.prepareMusicLink('https://soundcloud.com/artist/song', undefined, () => {});
+  client = 'b'.repeat(32);
+  await service.prepareMusicLink('https://soundcloud.com/artist/song2', undefined, () => {});
+});
+test('native error presentation preserves cause and removes Expo internals', () => {
+  assert.equal(p.readableImportError(new Error('UnexpectedException: Téléchargement refusé (403). (at ExpoModulesCore/ConcurrentFunctionDefinition.swift:90)')), 'Téléchargement refusé (403).');
+  assert.equal(p.readableImportError(new Error('Disque plein')), 'Disque plein');
+});

@@ -238,11 +238,11 @@ public class YouTube {
                 switch method {
 #if canImport(JavaScriptCore)
                 case .local:
-                    let allStreamingData = try await self.streamingData
+                    _ = try await self.streamingData
                     let videoInfos = try await self.videoInfos
                     
                     var streams = [Stream]()
-                    var existingITags = Set<Int>()
+                    var existingURLs = Set<URL>()
                     
                     func process(streamingData: InnerTube.StreamingData, videoInfo: InnerTube.VideoInfo) async throws {
                         
@@ -264,15 +264,18 @@ public class YouTube {
                         
                         let newStreams = streamManifest.compactMap { try? Stream(format: $0) }
                         
-                        // make sure only one stream per itag exists
-                        for stream in newStreams {
-                            if existingITags.insert(stream.itag.itag).inserted {
+                        // Different clients can return different URLs for one itag.
+                        // Keep those alternatives: a CDN may reject just one client.
+                        for var stream in newStreams {
+                            stream.downloadHeaders = videoInfo.downloadHeaders ?? [:]
+                            if existingURLs.insert(stream.url).inserted {
                                 streams.append(stream)
                             }
                         }
                     }
                     
-                    for (streamingData, videoInfo) in zip(allStreamingData, videoInfos) {
+                    for videoInfo in videoInfos {
+                        guard let streamingData = videoInfo.streamingData else { continue }
                         try await process(streamingData: streamingData, videoInfo: videoInfo)
                     }
                     
