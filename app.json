@@ -12,7 +12,9 @@
         "UIBackgroundModes": [
           "audio"
         ],
-        "CFBundleDisplayName": "Peak Music"
+        "CFBundleDisplayName": "Peak Music",
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true
       }
     },
     "android": {
