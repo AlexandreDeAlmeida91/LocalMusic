@@ -415,3 +415,31 @@ test('reimport restores missing audio while preserving playlist song ID and artw
   assert.equal(result.song.title, 'My title');
   assert.equal(m.files.get(result.song.uri), 'audio bytes');
 });
+
+test('YouTube fallback cleans decorative artist symbols before searching', async () => {
+  let query;
+  const service = soundcloudService(async url => {
+    query = new URL(url).searchParams.get('search_query');
+    return response(url, searchHTML([{ id, title: 'VIRA Trap Nest Official Audio', artist: 'VIRA', time: '4:00' }]));
+  });
+  const result = await service.youtubeFallback({ metadata: { title: 'Trap Nest', artist: '☆ VIRA ★', duration: 240 } }, undefined, () => {});
+  assert.equal(query, 'vira trap nest official audio');
+  assert.equal(result.videoID, id);
+});
+test('empty YouTube search retries without official audio and retains strict matching', async () => {
+  const queries = [];
+  const service = soundcloudService(async url => {
+    queries.push(new URL(url).searchParams.get('search_query'));
+    return response(url, searchHTML(queries.length === 1 ? [] : [{ id, title: 'Deftones Sextape live', artist: 'Deftones', time: '4:01' }]));
+  });
+  const result = await service.youtubeFallback({ metadata: { title: 'Sextape', artist: 'Deftones', duration: 241 } }, undefined, () => {});
+  assert.deepEqual(queries, ['deftones sextape official audio', 'deftones sextape']);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.videoID, null, 'a live version must require user choice');
+});
+test('YouTube empty retry is bounded and explains that a direct link may work', async () => {
+  let count = 0;
+  const service = soundcloudService(async url => { count++; return response(url, searchHTML([])); });
+  await assert.rejects(service.youtubeFallback({ metadata: { title: 'Song', artist: 'Artist' } }, undefined, () => {}), /deux recherches.*lien YouTube direct/);
+  assert.equal(count, 2);
+});

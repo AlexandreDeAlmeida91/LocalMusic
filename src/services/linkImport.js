@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
-  parseMusicLink, spotifyMetadata, youtubeCandidates, rankCandidates,
+  normalized, parseMusicLink, spotifyMetadata, youtubeCandidates, rankCandidates,
   automaticCandidate, soundcloudTrack, soundcloudFormats, embeddedJSON, validateSoundcloudTrack, readableImportError
 } from './linkParsing';
 
@@ -81,9 +81,26 @@ async function clientID(html, signal) {
 }
 
 async function youtubeMatches(metadata, signal, status) {
-  status(`Recherche YouTube : ${metadata.artist} — ${metadata.title}`);
-  const query = encodeURIComponent(`${metadata.artist} ${metadata.title} official audio`);
-  return rankCandidates(youtubeCandidates(await requestText(`https://www.youtube.com/results?search_query=${query}`, signal)), metadata);
+  const base = [normalized(metadata.artist), normalized(metadata.title)].filter(Boolean).join(' ');
+  if (!base) throw new Error('Titre et artiste manquants pour la recherche YouTube.');
+  const queries = [...new Set([`${base} official audio`, base])];
+  let lastError;
+  let readableResponse = false;
+  for (let index = 0; index < queries.length; index++) {
+    checkCancelled(signal);
+    status(index === 0 ? `Recherche YouTube : ${metadata.artist} — ${metadata.title}` : 'Nouvel essai YouTube avec une recherche simplifiée…');
+    try {
+      const html = await requestText(`https://www.youtube.com/results?search_query=${encodeURIComponent(queries[index])}`, signal);
+      const candidates = youtubeCandidates(html);
+      readableResponse = true;
+      if (candidates.length) return rankCandidates(candidates, metadata);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      lastError = error;
+    }
+  }
+  if (!readableResponse && lastError) throw lastError;
+  throw new Error('Aucun résultat YouTube exploitable après deux recherches. Essaie un lien YouTube direct vers le morceau.');
 }
 
 export async function prepareMusicLink(raw, signal, status) {
