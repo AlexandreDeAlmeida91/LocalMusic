@@ -99,7 +99,7 @@ test('current SoundCloud AAC streams and MONETIZE tracks are accepted without ac
   assert.throws(() => p.validateSoundcloudTrack({ ...track, policy: 'SNIP' }));
 });
 
-function libraryMock({ failSave = false } = {}) {
+function libraryMock({ failSave = false, repair = false } = {}) {
   const files = new Map([['file:///cache/PeakImports/new.m4a', 'audio bytes']]);
   let stored = null;
   const f = {
@@ -114,7 +114,7 @@ function libraryMock({ failSave = false } = {}) {
     resolveLocalPath: value => `file:///documents/LocalMusic/${value}`,
     writeJsonAtomic: async (_, value) => { if (failSave) throw new Error('Disk full'); stored = value; }
   };
-  const library = load('src/services/library.js', { 'expo-file-system/legacy': f, 'expo-document-picker': {}, './id3': {}, './storage': storage });
+  const library = load('src/services/library.js', { 'expo-file-system/legacy': f, 'expo-document-picker': {}, './id3': {}, './audioRepair': { createNormalizedMp3: async (source, destination) => { if (!repair) return { changed: false }; files.set(destination, 'normalized audio'); return { changed: true, uri: destination, duration: 541.176 }; } }, './storage': storage });
   return { library, files, stored: () => stored };
 }
 const download = { uri: 'file:///cache/PeakImports/new.m4a', extension: 'm4a', title: 'Test song', artist: 'Test artist', duration: 180, sourceKey: 'youtube:abcdefghijk', youtubeID: id, sourceUrl: 'https://youtube.com/watch?v=abcdefghijk' };
@@ -276,4 +276,26 @@ test('mobile AbortSignal without throwIfAborted still cancels before networking'
   const signal = { aborted: true, addEventListener() {}, removeEventListener() {} };
   await assert.rejects(service.expandImportLinks(['https://youtu.be/Bpaf6Dm9iRc'], signal, () => {}), { name: 'AbortError' });
   await assert.rejects(service.requestText('https://www.youtube.com', signal), { name: 'AbortError' });
+});
+
+test('repair keeps song identity, metadata and original while committing a new path', async () => {
+  const m = libraryMock({ repair: true });
+  const original = { id: 'old', uri: 'file:///documents/LocalMusic/Music/old.mp3', audioPath: 'Music/old.mp3', title: 'Song', lyricsPath: 'Lyrics/old.txt', artworkPath: 'Artwork/old.jpg' };
+  m.files.set(original.uri, 'original audio');
+  const result = await m.library.repairStoredSong(original, () => [original]);
+  assert.equal(result.song.id, original.id);
+  assert.equal(result.song.lyricsPath, original.lyricsPath);
+  assert.equal(result.song.artworkPath, original.artworkPath);
+  assert.equal(m.files.get(original.uri), 'original audio');
+  assert.equal(m.files.get(result.song.uri), 'normalized audio');
+  assert.equal(result.song.originalAudioPath, original.audioPath);
+  assert.equal(m.stored()[0].audioRepairVersion, 1);
+});
+test('repair metadata failure discards the new copy and keeps the original', async () => {
+  const m = libraryMock({ repair: true, failSave: true });
+  const original = { id: 'old', uri: 'file:///documents/LocalMusic/Music/old.mp3', audioPath: 'Music/old.mp3' };
+  m.files.set(original.uri, 'original audio');
+  const before = new Map(m.files);
+  await assert.rejects(m.library.repairStoredSong(original,[original]), /Disk full/);
+  assert.deepEqual(m.files,before);
 });

@@ -1,3 +1,5 @@
+> Version actuelle : 1.7.3. Consulter REPARATION_MP3_1_7_3.md pour le correctif de durée et PLAYLISTS_1_7.md pour les limites des playlists.
+
 > Version actuelle : 1.7.0. Consulte PLAYLISTS_1_7.md pour les fonctions et limites à jour. Les indications 1.6 ci-dessous décrivent la version précédente.
 
 # Peak Music 1.6.1 — import local (bêta)

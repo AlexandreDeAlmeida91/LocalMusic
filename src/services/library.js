@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { readId3Metadata } from './id3';
+import { createNormalizedMp3 } from './audioRepair';
 import {
   ARTWORK_DIR,
   LYRICS_DIR,
@@ -247,7 +248,7 @@ async function hydrateSong(originalSong) {
 async function recoverOrphanSongs(existingSongs) {
   const knownFileNames = new Set(
     existingSongs
-      .map((song) => song.fileName)
+      .flatMap((song) => [song.fileName, song.originalAudioPath?.split('/').pop()])
       .filter(Boolean)
   );
 
@@ -464,14 +465,24 @@ export async function pickAndImportSongs() {
         persisted?.artworkPath || null;
     }
 
+    let repaired = null;
+    const normalizedName = `${id}-normalized.mp3`;
+    const normalizedPath = `Music/${normalizedName}`;
+    if (extension === 'mp3') {
+      repaired = await createNormalizedMp3(destination, resolveLocalPath(normalizedPath), metadata);
+    }
+
     imported.push({
       id,
-      audioPath,
+      audioPath: repaired?.changed ? normalizedPath : audioPath,
+      audioRepairVersion: repaired?.changed ? 1 : null,
+      originalAudioPath: repaired?.changed ? audioPath : null,
+      duration: repaired?.duration,
       artworkPath,
       customArtworkPath: null,
       lyricsPath: null,
 
-      fileName,
+      fileName: repaired?.changed ? normalizedName : fileName,
       originalName:
         asset.name || fileName,
       title: metadata.title,
@@ -480,7 +491,7 @@ export async function pickAndImportSongs() {
       addedAt: new Date().toISOString(),
 
       // Runtime-only resolved paths.
-      uri: destination,
+      uri: repaired?.changed ? repaired.uri : destination,
       artworkUri: artworkPath
         ? resolveLocalPath(artworkPath)
         : null,
@@ -494,6 +505,7 @@ export async function pickAndImportSongs() {
 export async function deleteSongFile(song) {
   const paths = [
     song.audioPath || song.uri,
+    song.originalAudioPath,
     song.artworkPath,
     song.customArtworkPath,
     song.lyricsPath || song.lyricsUri
@@ -549,13 +561,47 @@ export async function commitDownloadedSong(download, songs) {
     artworkPath: null, artworkUri: null, customArtworkPath: null,
     lyricsPath: null, lyricsUri: null, addedAt: new Date().toISOString()
   };
+  if (download.extension === 'mp3') {
+    const normalizedPath = `Music/${id}-normalized.mp3`;
+    const repaired = await createNormalizedMp3(download.uri, resolveLocalPath(normalizedPath), song);
+    if (repaired.changed) {
+      song.audioPath = normalizedPath;
+      song.uri = repaired.uri;
+      song.fileName = `${id}-normalized.mp3`;
+      song.originalAudioPath = audioPath;
+      song.audioRepairVersion = 1;
+      song.duration = repaired.duration;
+    }
+  }
   const merged = [...songs, song].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
-  await FileSystem.moveAsync({ from: download.uri, to: uri });
   try {
+    await FileSystem.moveAsync({ from: download.uri, to: uri });
     await saveLibrary(merged);
   } catch (error) {
     await FileSystem.deleteAsync(uri, { idempotent: true });
+    if (song.uri !== uri) await FileSystem.deleteAsync(song.uri, { idempotent: true });
     throw error;
   }
   return { songs: merged, song, duplicate: false };
+}
+
+export async function repairStoredSong(song, currentSongsOrGetter) {
+  const getSongs = typeof currentSongsOrGetter === 'function' ? currentSongsOrGetter : () => currentSongsOrGetter;
+  let currentSongs = getSongs();
+  if (song.audioRepairVersion === 1) return { songs: currentSongs, song, changed: false, reason: 'Ce morceau a déjà été normalisé.' };
+  if (!/\.mp3$/i.test(song.audioPath || song.uri || '')) throw new Error('Cette réparation concerne les fichiers MP3.');
+  const audioPath = `Music/${song.id}-repair-${Date.now()}.mp3`;
+  const result = await createNormalizedMp3(song.uri, resolveLocalPath(audioPath), song);
+  if (!result.changed) return { ...result, songs: currentSongs, song };
+  currentSongs = getSongs();
+  const latest = currentSongs.find(item => item.id === song.id);
+  if (!latest || latest.uri !== song.uri) {
+    await FileSystem.deleteAsync(result.uri, { idempotent: true });
+    throw new Error('Le morceau a changé pendant la réparation. Réessaie.');
+  }
+  const updated = { ...latest, audioPath, uri: result.uri, fileName: audioPath.split('/').pop(), originalAudioPath: song.originalAudioPath || song.audioPath, audioRepairVersion: 1, duration: result.duration };
+  const songs = currentSongs.map(item => item.id === song.id ? updated : item);
+  try { await saveLibrary(songs); }
+  catch (error) { await FileSystem.deleteAsync(result.uri, { idempotent: true }); throw error; }
+  return { changed: true, songs, song: updated };
 }

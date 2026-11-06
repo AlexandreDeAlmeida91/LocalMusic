@@ -13,6 +13,7 @@ import {
   useProgress
 } from '@rntp/player';
 import {
+  repairStoredSong,
   deleteSongFile,
   commitDownloadedSong,
   loadLibrary,
@@ -60,6 +61,7 @@ export function MusicProvider({ children }) {
   const [error, setError] = useState(null);
 
   const activeQueueIdsRef = useRef([]);
+  const repairingRef = useRef(false);
 
   const activeMediaItem = useActiveMediaItem();
   const isPlaying = useIsPlaying();
@@ -319,6 +321,23 @@ export function MusicProvider({ children }) {
       setImporting(false);
     }
   }, [songs]);
+
+  const repairAudio = useCallback(async (song) => {
+    if (importing || repairingRef.current) throw new Error('Attends la fin de l’import ou de la réparation en cours.');
+    repairingRef.current = true;
+    setImporting(true);
+    try {
+      const result = await repairStoredSong(song, () => songsRef.current);
+      songsRef.current = result.songs;
+      setSongs(result.songs);
+      if (result.changed && currentSong?.id === song.id) {
+        // Reload the new URL so AVPlayer cannot retain the old duration.
+        const queue = activeQueueIdsRef.current.map(id => result.songs.find(s => s.id === id)).filter(Boolean);
+        await setNativeQueue(queue, activeQueueName, queue.findIndex(s => s.id === song.id), isPlaying);
+      }
+      return result.changed ? 'MP3 réparé. L’original est conservé.' : result.reason;
+    } finally { repairingRef.current = false; setImporting(false); }
+  }, [importing, currentSong, activeQueueName, isPlaying, setNativeQueue]);
 
   const removeSong = useCallback(
     async (song) => {
@@ -762,6 +781,7 @@ export function MusicProvider({ children }) {
 
     importSongs,
     acceptDownloadedSong,
+    repairAudio,
     removeSong,
     addOrReplaceLyrics,
     removeLyrics,
