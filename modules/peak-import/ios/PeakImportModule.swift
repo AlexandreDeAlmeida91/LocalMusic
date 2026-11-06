@@ -107,7 +107,7 @@ public class PeakImportModule: Module {
   fileprivate static func allowed(_ url: URL) -> Bool {
     guard url.scheme == "https", url.user == nil, url.password == nil,
           url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
-    return ["googlevideo.com", "youtube.com", "sndcdn.com", "soundcloud.com"].contains {
+    return ["googlevideo.com", "youtube.com", "sndcdn.com", "soundcloud.com", "playback.media-streaming.soundcloud.cloud"].contains {
       host == $0 || host.hasSuffix("." + $0)
     }
   }

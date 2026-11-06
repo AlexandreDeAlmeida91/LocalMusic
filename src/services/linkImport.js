@@ -138,7 +138,7 @@ export async function prepareMusicLink(raw, signal, status) {
       const endpoint = trustedURL(format.url, ['soundcloud.com']);
       endpoint.searchParams.set('client_id', await clientID(html, signal));
       const data = JSON.parse(await requestText(endpoint.href, signal));
-      const mediaURL = trustedURL(data.url, ['sndcdn.com', 'soundcloud.com']);
+      const mediaURL = trustedURL(data.url, ['sndcdn.com', 'soundcloud.com', 'playback.media-streaming.soundcloud.cloud']);
       if (/\/preview\/|\/(?:preview|playlist)\/0\/30\//i.test(mediaURL.pathname)) continue;
       const mode = format.format.protocol === 'hls' ? (format.format.mime_type.startsWith('audio/mp4') ? 'hls-aac' : 'hls-mp3') : 'direct';
       return { ...link, sourceKey: `soundcloud:${track.id}`, metadata, mediaURL: mediaURL.href, mode };

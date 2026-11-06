@@ -329,3 +329,25 @@ test('M4A bridge reports a stale IPA and forwards native failures', async () => 
   const failing = load('src/services/audioRepair.js', { ...mocks, expo: { requireOptionalNativeModule: () => ({ normalizeM4a: async () => { throw new Error('Read failed'); } }) } });
   await assert.rejects(failing.createNormalizedAudio('source.m4a', 'copy.m4a', {}), /Read failed/);
 });
+
+test('SoundCloud current AAC CDN prepares direct HLS without YouTube fallback', async () => {
+  const service = soundcloudService(async url => {
+    assert.ok(!url.includes('youtube.com'), 'must not search YouTube');
+    if (url.includes('api-v2')) return response(url, JSON.stringify({ url: 'https://playback.media-streaming.soundcloud.cloud/track/aac_160k/playlist.m3u8' }));
+    return response(url, scHTML({ ...scTrack, media: { transcodings: [{ ...scFormat, preset: 'aac_160k', format: { protocol: 'hls', mime_type: 'audio/mp4; codecs="mp4a.40.2"' } }] } }));
+  });
+  const result = await service.prepareMusicLink('https://soundcloud.com/artist/song', undefined, () => {});
+  assert.equal(result.mode, 'hls-aac');
+  assert.equal(new URL(result.mediaURL).hostname, 'playback.media-streaming.soundcloud.cloud');
+  assert.equal(result.videoID, undefined);
+});
+
+test('SoundCloud lookalike CDN is still refused', async () => {
+  const service = soundcloudService(async url => {
+    if (url.includes('api-v2')) return response(url, JSON.stringify({ url: 'https://playback.media-streaming.soundcloud.cloud.evil.example/audio.m3u8' }));
+    if (url.includes('youtube.com')) return response(url, searchHTML([{ id, title: 'Test Artist Northern Lights Official Audio', artist: target.artist, time: '3:00' }]));
+    return response(url, scHTML({ ...scTrack, media: { transcodings: [scFormat] } }));
+  });
+  const result = await service.prepareMusicLink('https://soundcloud.com/artist/song', undefined, () => {});
+  assert.equal(result.mediaURL, undefined);
+});
