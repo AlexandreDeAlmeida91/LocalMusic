@@ -114,7 +114,7 @@ function libraryMock({ failSave = false, repair = false } = {}) {
     resolveLocalPath: value => `file:///documents/LocalMusic/${value}`,
     writeJsonAtomic: async (_, value) => { if (failSave) throw new Error('Disk full'); stored = value; }
   };
-  const library = load('src/services/library.js', { 'expo-file-system/legacy': f, 'expo-document-picker': {}, './id3': {}, './audioRepair': { createNormalizedMp3: async (source, destination) => { if (!repair) return { changed: false }; files.set(destination, 'normalized audio'); return { changed: true, uri: destination, duration: 541.176 }; } }, './storage': storage });
+  const library = load('src/services/library.js', { 'expo-file-system/legacy': f, 'expo-document-picker': {}, './id3': {}, './audioRepair': { createNormalizedAudio: async (source, destination) => { if (!repair) return { changed: false }; files.set(destination, 'normalized audio'); return { changed: true, uri: destination, duration: 541.176 }; } }, './storage': storage });
   return { library, files, stored: () => stored };
 }
 const download = { uri: 'file:///cache/PeakImports/new.m4a', extension: 'm4a', title: 'Test song', artist: 'Test artist', duration: 180, sourceKey: 'youtube:abcdefghijk', youtubeID: id, sourceUrl: 'https://youtube.com/watch?v=abcdefghijk' };
@@ -298,4 +298,34 @@ test('repair metadata failure discards the new copy and keeps the original', asy
   const before = new Map(m.files);
   await assert.rejects(m.library.repairStoredSong(original,[original]), /Disk full/);
   assert.deepEqual(m.files,before);
+});
+
+test('M4A repair preserves extension and original, and does not normalize twice', async () => {
+  const m = libraryMock({ repair: true });
+  const original = { id: 'aac', uri: 'file:///documents/LocalMusic/Music/aac.m4a', audioPath: 'Music/aac.m4a', title: 'AAC' };
+  m.files.set(original.uri, 'original AAC');
+  const result = await m.library.repairStoredSong(original, [original]);
+  assert.match(result.song.uri, /\.m4a$/);
+  assert.equal(result.song.originalAudioPath, original.audioPath);
+  assert.equal(m.files.get(original.uri), 'original AAC');
+  const again = await m.library.repairStoredSong(result.song, result.songs);
+  assert.equal(again.changed, false);
+});
+
+test('downloaded M4A is normalized before commit and original retained', async () => {
+  const m = libraryMock({ repair: true });
+  const uri = 'file:///cache/new.m4a';
+  m.files.set(uri, 'original AAC');
+  const result = await m.library.commitDownloadedSong({ uri, extension: 'm4a', title: 'AAC', sourceKey: 'youtube:aac' }, []);
+  assert.match(result.song.uri, /-normalized\.m4a$/);
+  assert.equal(result.song.audioRepairVersion, 1);
+  assert.equal(m.files.get('file:///documents/LocalMusic/' + result.song.originalAudioPath), 'original AAC');
+});
+
+test('M4A bridge reports a stale IPA and forwards native failures', async () => {
+  const mocks = { 'expo-file-system': {}, 'expo-file-system/legacy': {}, './mp3Normalize': {} };
+  const stale = load('src/services/audioRepair.js', { ...mocks, expo: { requireOptionalNativeModule: () => ({}) } });
+  await assert.rejects(stale.createNormalizedAudio('source.m4a', 'copy.m4a', {}), /nouvelle IPA/);
+  const failing = load('src/services/audioRepair.js', { ...mocks, expo: { requireOptionalNativeModule: () => ({ normalizeM4a: async () => { throw new Error('Read failed'); } }) } });
+  await assert.rejects(failing.createNormalizedAudio('source.m4a', 'copy.m4a', {}), /Read failed/);
 });

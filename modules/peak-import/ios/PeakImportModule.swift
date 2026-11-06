@@ -91,6 +91,10 @@ public class PeakImportModule: Module {
       }
     }
 
+    AsyncFunction("normalizeM4a") { (source: String, destination: String) async throws -> [String: String] in
+      try await M4ANormalizer.normalize(source: source, destination: destination)
+    }
+
     AsyncFunction("cancel") { (jobID: String) async in await self.jobs.cancel(jobID) }
   }
 

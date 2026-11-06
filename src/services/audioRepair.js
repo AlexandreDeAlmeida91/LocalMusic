@@ -1,3 +1,4 @@
+import { requireOptionalNativeModule } from 'expo';
 import { File } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import { normalizeMp3 } from './mp3Normalize';
@@ -17,4 +18,14 @@ export async function createNormalizedMp3(source, destination, metadata) {
     await FileSystem.deleteAsync(destination, { idempotent: true }).catch(() => {});
     throw error;
   }
+}
+
+export async function createNormalizedAudio(source, destination, metadata) {
+  if (/\.mp3$/i.test(destination)) return createNormalizedMp3(source, destination, metadata);
+  const engine = requireOptionalNativeModule('PeakImport');
+  if (typeof engine?.normalizeM4a !== 'function') {
+    throw new Error('Installe la nouvelle IPA de Peak Music pour réparer les M4A.');
+  }
+  const result = await engine.normalizeM4a(source, destination);
+  return { changed: true, uri: destination, duration: Number(result.duration) };
 }

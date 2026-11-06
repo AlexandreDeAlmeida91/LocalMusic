@@ -335,7 +335,7 @@ export function MusicProvider({ children }) {
         const queue = activeQueueIdsRef.current.map(id => result.songs.find(s => s.id === id)).filter(Boolean);
         await setNativeQueue(queue, activeQueueName, queue.findIndex(s => s.id === song.id), isPlaying);
       }
-      return result.changed ? 'MP3 réparé. L’original est conservé.' : result.reason;
+      return result.changed ? 'Morceau réparé. L’original est conservé.' : result.reason;
     } finally { repairingRef.current = false; setImporting(false); }
   }, [importing, currentSong, activeQueueName, isPlaying, setNativeQueue]);
 

@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { readId3Metadata } from './id3';
-import { createNormalizedMp3 } from './audioRepair';
+import { createNormalizedAudio } from './audioRepair';
 import {
   ARTWORK_DIR,
   LYRICS_DIR,
@@ -466,10 +466,10 @@ export async function pickAndImportSongs() {
     }
 
     let repaired = null;
-    const normalizedName = `${id}-normalized.mp3`;
+    const normalizedName = `${id}-normalized.${extension}`;
     const normalizedPath = `Music/${normalizedName}`;
-    if (extension === 'mp3') {
-      repaired = await createNormalizedMp3(destination, resolveLocalPath(normalizedPath), metadata);
+    if (['mp3', 'm4a'].includes(extension)) {
+      repaired = await createNormalizedAudio(destination, resolveLocalPath(normalizedPath), metadata);
     }
 
     imported.push({
@@ -561,13 +561,13 @@ export async function commitDownloadedSong(download, songs) {
     artworkPath: null, artworkUri: null, customArtworkPath: null,
     lyricsPath: null, lyricsUri: null, addedAt: new Date().toISOString()
   };
-  if (download.extension === 'mp3') {
-    const normalizedPath = `Music/${id}-normalized.mp3`;
-    const repaired = await createNormalizedMp3(download.uri, resolveLocalPath(normalizedPath), song);
+  if (['mp3', 'm4a'].includes(download.extension)) {
+    const normalizedPath = `Music/${id}-normalized.${download.extension}`;
+    const repaired = await createNormalizedAudio(download.uri, resolveLocalPath(normalizedPath), song);
     if (repaired.changed) {
       song.audioPath = normalizedPath;
       song.uri = repaired.uri;
-      song.fileName = `${id}-normalized.mp3`;
+      song.fileName = `${id}-normalized.${download.extension}`;
       song.originalAudioPath = audioPath;
       song.audioRepairVersion = 1;
       song.duration = repaired.duration;
@@ -589,9 +589,10 @@ export async function repairStoredSong(song, currentSongsOrGetter) {
   const getSongs = typeof currentSongsOrGetter === 'function' ? currentSongsOrGetter : () => currentSongsOrGetter;
   let currentSongs = getSongs();
   if (song.audioRepairVersion === 1) return { songs: currentSongs, song, changed: false, reason: 'Ce morceau a déjà été normalisé.' };
-  if (!/\.mp3$/i.test(song.audioPath || song.uri || '')) throw new Error('Cette réparation concerne les fichiers MP3.');
-  const audioPath = `Music/${song.id}-repair-${Date.now()}.mp3`;
-  const result = await createNormalizedMp3(song.uri, resolveLocalPath(audioPath), song);
+  const extension = (song.audioPath || song.uri || '').match(/\.(mp3|m4a)$/i)?.[1]?.toLowerCase();
+  if (!extension) throw new Error('Cette réparation concerne les fichiers MP3 et M4A.');
+  const audioPath = `Music/${song.id}-repair-${Date.now()}.${extension}`;
+  const result = await createNormalizedAudio(song.uri, resolveLocalPath(audioPath), song);
   if (!result.changed) return { ...result, songs: currentSongs, song };
   currentSongs = getSongs();
   const latest = currentSongs.find(item => item.id === song.id);
