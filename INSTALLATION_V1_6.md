@@ -1,3 +1,5 @@
+> Version actuelle : 1.7.7. Lire LIKES_SOUNDCLOUD_1_7_7.md.
+
 > Version actuelle : 1.7.6. Lire CORRECTIF_SOUNDCLOUD_1_7_6.md.
 
 > Version actuelle : 1.7.5. Lire CORRECTIF_AAC_1_7_5.md.

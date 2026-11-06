@@ -143,7 +143,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
         <Text style={styles.hint}>YouTube · SoundCloud · Spotify</Text>
-        <Text style={styles.hint}>Colle des liens de morceaux ou de playlists publiques séparés par des ;. Garde Peak Music ouvert pendant l’import.</Text>
+        <Text style={styles.hint}>Colle des liens de morceaux, de playlists publiques ou de Likes SoundCloud séparés par des ;. Garde Peak Music ouvert pendant l’import.</Text>
         <TextInput value={input} onChangeText={setInput} editable={!busy} multiline autoCapitalize="none" autoCorrect={false}
           keyboardType="url" placeholder="https://… ; https://…" placeholderTextColor="#8e88a9" style={styles.input}
           accessibilityLabel="Liens des morceaux" />

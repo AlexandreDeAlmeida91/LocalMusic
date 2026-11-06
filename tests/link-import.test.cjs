@@ -45,7 +45,7 @@ test('normalizes YouTube, Spotify locale and SoundCloud links', () => {
 test('rejects spoofed hosts, credentials, unsupported playlists and malformed IDs', () => {
   for (const url of ['https://youtube.com.evil.test/watch?v=abcdefghijk', 'https://youtube.com@evil.test/watch?v=abcdefghijk',
     'file:///private/file', 'https://open.spotify.com/playlist/123', 'https://youtube.com/playlist',
-    'https://soundcloud.com/artist/likes', 'https://youtu.be/short', 'https://localhost/watch?v=abcdefghijk']) {
+    'https://soundcloud.com/artist/reposts', 'https://youtu.be/short', 'https://localhost/watch?v=abcdefghijk']) {
     assert.throws(() => p.parseMusicLink(url));
   }
 });
@@ -350,4 +350,44 @@ test('SoundCloud lookalike CDN is still refused', async () => {
   });
   const result = await service.prepareMusicLink('https://soundcloud.com/artist/song', undefined, () => {});
   assert.equal(result.mediaURL, undefined);
+});
+
+const likesHTML = scHTML({}).replace('"hydratable":"sound","data":{}', '"hydratable":"user","data":{"id":123}');
+test('SoundCloud likes URLs expand all pages, deduplicate, and skip liked playlists', async () => {
+  assert.equal(p.parseMusicLink('https://m.soundcloud.com/person/likes?si=abc').likes, true);
+  let pages = 0;
+  const service = soundcloudService(async url => {
+    if (!url.includes('api-v2')) return response(url, likesHTML);
+    pages++;
+    assert.equal(new URL(url).searchParams.get('client_id'), 'a'.repeat(32));
+    return response(url, JSON.stringify(pages === 1 ? {
+      collection: [{ track: { permalink_url: 'https://soundcloud.com/a/one' } }, { playlist: {} }],
+      next_href: 'https://api-v2.soundcloud.com/users/123/likes?offset=next'
+    } : { collection: [{ track: { permalink_url: 'https://soundcloud.com/a/one' } }, { track: { permalink_url: 'https://soundcloud.com/b/two' } }], next_href: null }));
+  });
+  const result = await service.expandImportLinks(['https://soundcloud.com/person/likes'], undefined, () => {});
+  assert.equal(pages, 2);
+  assert.deepEqual(result.links, ['https://soundcloud.com/a/one', 'https://soundcloud.com/b/two']);
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /1 éléments/);
+});
+test('SoundCloud likes retains fetched tracks with warning on pagination failure', async () => {
+  const service = soundcloudService(async url => {
+    if (!url.includes('api-v2')) return response(url, likesHTML);
+    if (url.includes('offset')) throw new Error('Network error');
+    return response(url, JSON.stringify({ collection: [{ track: { permalink_url: 'https://soundcloud.com/a/one' } }], next_href: 'https://api-v2.soundcloud.com/users/123/likes?offset=next' }));
+  });
+  const result = await service.expandImportLinks(['https://soundcloud.com/person/likes'], undefined, () => {});
+  assert.equal(result.links.length, 1);
+  assert.match(result.warnings[0], /incomplète/);
+});
+test('SoundCloud likes rejects external pagination without sending client ID', async () => {
+  const service = soundcloudService(async url => {
+    assert.ok(!url.includes('evil.example'));
+    if (!url.includes('api-v2')) return response(url, likesHTML);
+    return response(url, JSON.stringify({ collection: [{ track: { permalink_url: 'https://soundcloud.com/a/one' } }], next_href: 'https://evil.example/users/123/likes' }));
+  });
+  const result = await service.expandImportLinks(['https://soundcloud.com/person/likes'], undefined, () => {});
+  assert.equal(result.links.length, 1);
+  assert.match(result.warnings[0], /incomplète/);
 });

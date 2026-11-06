@@ -170,6 +170,51 @@ export async function downloadPrepared(prepared, jobID) {
 }
 
 
+// Public liked tracks only; liked playlists are deliberately not expanded.
+async function soundcloudLikes(html, signal, status) {
+  const hydration = embeddedJSON(html, 'window.__sc_hydration =');
+  const user = hydration?.find?.(entry => entry.hydratable === 'user')?.data;
+  if (!/^\d+$/.test(String(user?.id || ''))) throw new Error('Profil SoundCloud inaccessible.');
+  const client = await clientID(html, signal);
+  const path = `/users/${user.id}/likes`;
+  let next = `https://api-v2.soundcloud.com${path}?limit=200&linked_partitioning=1`;
+  const visited = new Set(), tracks = new Set();
+  let partial = false, skipped = 0;
+  for (let page = 0; next && page < 100; page++) {
+    checkCancelled(signal);
+    try {
+      const url = new URL(next);
+      if (url.protocol !== 'https:' || url.hostname !== 'api-v2.soundcloud.com' ||
+          url.pathname !== path || url.username || url.password || url.port) {
+        throw new Error('Adresse de pagination SoundCloud non reconnue.');
+      }
+      url.searchParams.set('client_id', client);
+      if (visited.has(url.href)) { partial = true; break; }
+      visited.add(url.href);
+      status(`Lecture des Likes SoundCloud : ${tracks.size} titres trouvés…`);
+      const data = JSON.parse(await requestText(url.href, signal));
+      if (!Array.isArray(data.collection)) throw new Error('Liste des Likes SoundCloud illisible.');
+      for (const entry of data.collection) {
+        const track = entry.track;
+        if (!track?.permalink_url) { skipped++; continue; }
+        try {
+          const parsed = parseMusicLink(track.permalink_url);
+          if (parsed.provider !== 'soundcloud' || parsed.playlist) { skipped++; continue; }
+          tracks.add(parsed.url);
+        } catch { skipped++; }
+      }
+      next = data.next_href || null;
+      if (page === 99 && next) partial = true;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      if (!tracks.size) throw error;
+      partial = true;
+      break;
+    }
+  }
+  return { links: [...tracks], partial, skipped };
+}
+
 // Expand public playlist pages before queue processing. Never silently claim
 // completeness: embeds and public pages may expose only part of a collection.
 export async function expandImportLinks(rawLinks, signal, status) {
@@ -192,9 +237,17 @@ export async function expandImportLinks(rawLinks, signal, status) {
         link = parseMusicLink(destination);
       }
       if (!link.playlist) { output.push(link.url); continue; }
-      status('Lecture de la playlist…');
+      status(link.likes ? 'Lecture des Likes SoundCloud…' : 'Lecture de la playlist…');
       const url = link.provider === 'spotify' ? `https://open.spotify.com/embed/playlist/${link.id}` : link.url;
       const html = await requestText(url, signal);
+      if (link.likes) {
+        const likes = await soundcloudLikes(html, signal, status);
+        output.push(...likes.links);
+        if (!likes.links.length) warnings.push('SoundCloud Likes : aucun titre public accessible.');
+        if (likes.partial) warnings.push(`SoundCloud Likes : récupération interrompue après ${likes.links.length} titres ; liste incomplète. Tu peux relancer cet import.`);
+        if (likes.skipped) warnings.push(`SoundCloud Likes : ${likes.skipped} éléments sans morceau accessible ou playlists likées ignorés.`);
+        continue;
+      }
       const found = [];
       let partial = false;
       if (link.provider === 'youtube') {

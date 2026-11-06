@@ -25,6 +25,7 @@ export function parseMusicLink(raw) {
     return { provider: 'redirect', url: url.href };
   }
   if (['soundcloud.com', 'www.soundcloud.com', 'm.soundcloud.com'].includes(host)) {
+    if (parts.length === 2 && parts[1] === 'likes') return { provider: 'soundcloud', playlist: true, likes: true, url: `https://soundcloud.com/${parts[0]}/likes` };
     if (parts.length === 3 && parts[1] === 'sets') return { provider: 'soundcloud', playlist: true, url: `https://soundcloud.com/${parts.join('/')}` };
     if (parts.length !== 2 || ['sets', 'tracks', 'likes', 'reposts', 'albums'].includes(parts[1])) throw new Error('Utilise un lien SoundCloud vers un morceau individuel.');
     const clean = `https://soundcloud.com/${parts.join('/')}`;
