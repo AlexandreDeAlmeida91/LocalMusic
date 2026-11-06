@@ -23,6 +23,11 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Test native M4A repair
+        run: |
+          xcrun swiftc -target "$(uname -m)-apple-macosx13.0" -parse-as-library modules/peak-import/ios/M4ANormalizer.swift tests/m4a-native.swift -o /tmp/peak-m4a-test
+          /tmp/peak-m4a-test tests/fixtures/aac-fragmented.m4a
+
       - name: Install JavaScript dependencies
         run: npm install
 

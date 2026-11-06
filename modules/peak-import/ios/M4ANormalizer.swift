@@ -7,6 +7,49 @@ enum M4ANormalizer {
     let message: String
     var errorDescription: String? { message }
   }
+  static func sampleDuration(_ sample: CMSampleBuffer) throws -> CMTime {
+    let reported = CMSampleBufferGetDuration(sample)
+    if reported.isNumeric && reported > .zero { return reported }
+    guard let format = CMSampleBufferGetFormatDescription(sample),
+          let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee,
+          asbd.mFormatID == kAudioFormatMPEG4AAC,
+          asbd.mSampleRate.isFinite, asbd.mSampleRate > 0,
+          asbd.mSampleRate <= Double(Int32.max),
+          asbd.mSampleRate.rounded() == asbd.mSampleRate else {
+      throw Failure(message: "Durée AAC absente et format audio inexploitable.")
+    }
+    var descriptions: UnsafePointer<AudioStreamPacketDescription>?
+    var size = 0
+    let status = CMSampleBufferGetAudioStreamPacketDescriptionsPtr(
+      sample, packetDescriptionsPointerOut: &descriptions, sizeOut: &size)
+    let count = CMSampleBufferGetNumSamples(sample)
+    guard status == noErr, count > 0 else {
+      throw Failure(message: "Impossible de lire les paquets AAC (code \(status)).")
+    }
+    var frames: Int64 = 0
+    if let descriptions, size > 0 {
+      let stride = MemoryLayout<AudioStreamPacketDescription>.stride
+      guard size % stride == 0, size / stride == count else {
+        throw Failure(message: "Nombre de paquets AAC incohérent.")
+      }
+      for index in 0..<count {
+        let variableFrames = descriptions[index].mVariableFramesInPacket
+        let packetFrames = variableFrames > 0 ? variableFrames : asbd.mFramesPerPacket
+        guard packetFrames > 0 else { throw Failure(message: "Durée du paquet AAC inconnue.") }
+        let sum = frames.addingReportingOverflow(Int64(packetFrames))
+        guard !sum.overflow else { throw Failure(message: "Durée AAC hors limites.") }
+        frames = sum.partialValue
+      }
+    } else {
+      guard asbd.mFramesPerPacket > 0 else { throw Failure(message: "Durée AAC inconnue.") }
+      let total = Int64(count).multipliedReportingOverflow(by: Int64(asbd.mFramesPerPacket))
+      guard !total.overflow else { throw Failure(message: "Durée AAC hors limites.") }
+      frames = total.partialValue
+    }
+    // Frames are per channel already: never multiply by the channel count.
+    return CMTime(value: frames, timescale: Int32(asbd.mSampleRate))
+  }
+
   static func normalize(source: String, destination: String) async throws -> [String: String] {
     let fm = FileManager.default
     let roots = [fm.urls(for: .documentDirectory, in: .userDomainMask)[0], fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]]
@@ -70,10 +113,15 @@ enum M4ANormalizer {
       }
       guard let sample = output.copyNextSampleBuffer() else { break }
       let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-      let duration = CMSampleBufferGetDuration(sample)
-      guard pts.isNumeric, duration.isNumeric, duration > .zero else {
-        throw Failure(message: "Horodatage AAC invalide : original conservé.")
+      // Compressed audio buffers may omit aggregate duration. Their packet
+      // descriptions + ASBD still define the exact number of audio frames.
+      let count = CMSampleBufferGetNumSamples(sample)
+      if count == 0 && CMSampleBufferGetTotalSampleSize(sample) == 0 { continue }
+      guard pts.isNumeric else {
+        throw Failure(message: "Position AAC absente (buffer \(packetCount)) : réparation interrompue.")
       }
+      let duration = try sampleDuration(sample)
+
       if let lastPTS, pts < lastPTS { throw Failure(message: "Horodatage AAC non ordonné.") }
       if start == nil { start = pts; writer.startSession(atSourceTime: pts) }
       guard input.append(sample) else { throw writer.error ?? Failure(message: "Copie AAC impossible.") }

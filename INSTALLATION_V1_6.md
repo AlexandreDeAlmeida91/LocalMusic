@@ -1,3 +1,5 @@
+> Version actuelle : 1.7.5. Lire CORRECTIF_AAC_1_7_5.md.
+
 > Version actuelle : 1.7.4. Consulter REPARATION_M4A_1_7_4.md pour la correction des M4A et REPARATION_MP3_1_7_3.md pour les MP3.
 
 > Version actuelle : 1.7.0. Consulte PLAYLISTS_1_7.md pour les fonctions et limites à jour. Les indications 1.6 ci-dessous décrivent la version précédente.
