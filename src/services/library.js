@@ -538,9 +538,10 @@ export async function deleteSongFile(song) {
 // as manually imported files. Commit metadata before exposing the song in the UI.
 export async function commitDownloadedSong(download, songs) {
   await ensureStorage();
-  const duplicate = songs.find(song => song.sourceKey === download.sourceKey ||
+  const duplicate = songs.find(song => (download.sourceKey && song.sourceKey === download.sourceKey) ||
     (download.youtubeID && song.youtubeID === download.youtubeID));
-  if (duplicate) {
+  const duplicateInfo = duplicate?.uri ? await FileSystem.getInfoAsync(duplicate.uri) : null;
+  if (duplicateInfo?.exists && !duplicateInfo.isDirectory && duplicateInfo.size > 0) {
     await FileSystem.deleteAsync(download.uri, { idempotent: true });
     return { songs, song: duplicate, duplicate: true };
   }
@@ -553,7 +554,7 @@ export async function commitDownloadedSong(download, songs) {
   const audioPath = `Music/${fileName}`;
   const uri = resolveLocalPath(audioPath);
   const song = {
-    id, fileName, audioPath, uri,
+    id: duplicate?.id || id, fileName, audioPath, uri,
     originalName: `${download.title}.${download.extension}`,
     title: download.title, artist: download.artist, album: '',
     duration: download.duration, sourceKey: download.sourceKey,
@@ -573,7 +574,12 @@ export async function commitDownloadedSong(download, songs) {
       song.duration = repaired.duration;
     }
   }
-  const merged = [...songs, song].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
+  if (duplicate) {
+    for (const key of ['title', 'artist', 'album', 'artworkPath', 'artworkUri', 'customArtworkPath', 'lyricsPath', 'lyricsUri', 'addedAt']) {
+      if (duplicate[key] != null) song[key] = duplicate[key];
+    }
+  }
+  const merged = [...songs.filter(item => item.id !== duplicate?.id), song].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
   try {
     await FileSystem.moveAsync({ from: download.uri, to: uri });
     await saveLibrary(merged);

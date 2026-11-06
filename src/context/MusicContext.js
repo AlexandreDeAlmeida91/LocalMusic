@@ -1,3 +1,4 @@
+import { findExistingImport } from '../services/importDedup';
 import React, {
   createContext,
   useCallback,
@@ -288,6 +289,8 @@ export function MusicProvider({ children }) {
       TrackPlayer.setRepeatMode(nativeRepeatMode(nextMode));
     }
   }, [playerReady, repeatMode]);
+
+  const findImportedSong = useCallback(candidate => findExistingImport(songsRef.current, candidate), []);
 
   const acceptDownloadedSong = useCallback(async (download) => {
     const result = await commitDownloadedSong(download, songsRef.current);
@@ -781,6 +784,7 @@ export function MusicProvider({ children }) {
 
     importSongs,
     acceptDownloadedSong,
+    findImportedSong,
     repairAudio,
     removeSong,
     addOrReplaceLyrics,

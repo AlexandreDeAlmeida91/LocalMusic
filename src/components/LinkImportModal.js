@@ -4,7 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { youtubeFallback, expandImportLinks, assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
 import { readableImportError } from '../services/linkParsing';
 
-export default function LinkImportModal({ visible, onClose, onImported }) {
+export default function LinkImportModal({ visible, onClose, onImported, onFindExisting }) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
@@ -16,6 +16,8 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
   const choose = useRef(null);
   const save = useRef(onImported);
   save.current = onImported;
+  const lookup = useRef(onFindExisting);
+  lookup.current = onFindExisting;
 
   const cancel = () => {
     const current = operation.current;
@@ -58,7 +60,14 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
     operation.current = current;
     setBusy(true);
     setRows(links.map(url => ({ url, status: 'En attente' })));
-    let completed = 0;
+    let completed = 0, skipped = 0;
+    const skipExisting = async (index, candidate) => {
+      const song = await lookup.current(candidate);
+      if (!song) return false;
+      skipped++;
+      updateRow(index, { title: song.title, status: 'Déjà présent — ignoré' });
+      return true;
+    };
     try {
       const expanded = await expandImportLinks(links, controller.signal, setPhase);
       links = expanded.links;
@@ -71,8 +80,10 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
         setFraction(null);
         updateRow(i, { status: 'Recherche…' });
         try {
+          if (await skipExisting(i, links[i])) continue;
           let prepared = await prepareMusicLink(links[i], controller.signal, setPhase);
           if (controller.signal.aborted) throw new Error('Annulé');
+          if (await skipExisting(i, prepared)) continue;
           if (prepared.candidates?.length && !prepared.videoID) {
             setPhase('Choisis la bonne version YouTube');
             const selected = await new Promise(resolve => { choose.current = resolve; setChoice(prepared); });
@@ -85,6 +96,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
             prepared.videoID = selected;
           }
           if (controller.signal.aborted) throw new Error('Annulé');
+          if (await skipExisting(i, prepared)) continue;
           updateRow(i, { status: 'Téléchargement…', title: prepared.metadata?.title });
           try {
             downloaded = await downloadPrepared(prepared, current.jobID);
@@ -99,6 +111,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
               prepared.videoID = selected;
             }
             if (controller.signal.aborted) throw new Error('Annulé');
+            if (await skipExisting(i, prepared)) continue;
             // A fresh job ID prevents cancellation bookkeeping from affecting retry.
             current.jobID += '-youtube';
             downloaded = await downloadPrepared(prepared, current.jobID);
@@ -110,7 +123,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
           downloaded = null;
           current.saving = false;
           updateRow(i, { title: result.song.title, status: result.duplicate ? 'Déjà dans la bibliothèque' : 'Ajouté ✓' });
-          completed++;
+          if (result.duplicate) skipped++; else completed++;
         } catch (e) {
           updateRow(i, { status: controller.signal.aborted ? 'Annulé' : 'Échec', detail: controller.signal.aborted ? '' : readableImportError(e) });
         } finally {
@@ -129,7 +142,7 @@ export default function LinkImportModal({ visible, onClose, onImported }) {
       setBusy(false);
       setChoice(null);
       setFraction(null);
-      setPhase(`${completed} morceau${completed > 1 ? 'x' : ''} disponible${completed > 1 ? 's' : ''} dans la bibliothèque.`);
+      setPhase(`${completed} ajouté(s) · ${skipped} déjà présent(s) ignoré(s).`);
     }
   };
 

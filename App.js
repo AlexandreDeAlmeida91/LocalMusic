@@ -213,6 +213,7 @@ function LibraryScreen() {
     clearError,
     importSongs,
     acceptDownloadedSong,
+    findImportedSong,
     repairAudio,
     removeSong,
     addOrReplaceLyrics,
@@ -672,7 +673,7 @@ function LibraryScreen() {
 
       <MiniPlayer />
       <PlayerModal />
-      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} />
+      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} onFindExisting={findImportedSong} />
 
       <CreatePlaylistModal
         visible={createVisible}

@@ -104,7 +104,7 @@ function libraryMock({ failSave = false, repair = false } = {}) {
   let stored = null;
   const f = {
     cacheDirectory: 'file:///cache/',
-    getInfoAsync: async uri => ({ exists: files.has(uri) }),
+    getInfoAsync: async uri => ({ exists: files.has(uri), size: files.get(uri)?.length || 0 }),
     moveAsync: async ({ from, to }) => { if (!files.has(from)) throw new Error('Missing'); files.set(to, files.get(from)); files.delete(from); },
     deleteAsync: async uri => files.delete(uri)
   };
@@ -130,11 +130,12 @@ test('commit retains existing songs and saves relative paths for offline playbac
 });
 test('Spotify and YouTube importing the same video do not create a second file', async () => {
   const m = libraryMock();
-  const old = { id: 'old', title: 'Song', youtubeID: id, sourceKey: 'spotify:123' };
+  const old = { id: 'old', title: 'Song', youtubeID: id, sourceKey: 'spotify:123', uri: 'file:///documents/old.m4a' };
+  m.files.set(old.uri, 'existing');
   const result = await m.library.commitDownloadedSong(download, [old]);
   assert.equal(result.duplicate, true);
   assert.equal(result.song, old);
-  assert.equal(m.files.size, 0);
+  assert.equal(m.files.size, 1);
 });
 test('storage failure rolls back the new audio and does not alter the collection', async () => {
   const m = libraryMock({ failSave: true });
@@ -390,4 +391,27 @@ test('SoundCloud likes rejects external pagination without sending client ID', a
   const result = await service.expandImportLinks(['https://soundcloud.com/person/likes'], undefined, () => {});
   assert.equal(result.links.length, 1);
   assert.match(result.warnings[0], /incomplète/);
+});
+
+test('early duplicate detection canonicalizes source links, includes fallback video and checks local file', async () => {
+  const service = load('src/services/importDedup.js', { './linkParsing': p,
+    'expo-file-system/legacy': { getInfoAsync: async uri => ({ exists: uri !== 'missing', size: uri === 'empty' ? 0 : 100 }) } });
+  const song = { uri: 'present', sourceUrl: 'https://soundcloud.com/artist/song?si=old', sourceKey: 'soundcloud:42', youtubeID: id };
+  assert.equal(await service.findExistingImport([song], 'https://m.soundcloud.com/artist/song?si=new'), song);
+  assert.equal(await service.findExistingImport([song], { sourceKey: 'soundcloud:42' }), song);
+  assert.equal(await service.findExistingImport([song], `https://youtu.be/${id}`), song);
+  assert.equal(await service.findExistingImport([{ ...song, uri: 'missing' }], song.sourceUrl), null);
+  assert.equal(await service.findExistingImport([{ ...song, uri: 'empty' }], song.sourceUrl), null);
+  assert.equal(await service.findExistingImport([{ uri: 'present', title: 'Same title' }], song.sourceUrl), null);
+});
+test('reimport restores missing audio while preserving playlist song ID and artwork', async () => {
+  const m = libraryMock();
+  const missing = { id: 'keep-id', uri: 'file:///documents/missing.m4a', sourceKey: download.sourceKey, title: 'My title', artworkPath: 'Artwork/custom.jpg' };
+  const result = await m.library.commitDownloadedSong(download, [missing]);
+  assert.equal(result.duplicate, false);
+  assert.equal(result.songs.length, 1);
+  assert.equal(result.song.id, 'keep-id');
+  assert.equal(result.song.artworkPath, 'Artwork/custom.jpg');
+  assert.equal(result.song.title, 'My title');
+  assert.equal(m.files.get(result.song.uri), 'audio bytes');
 });
