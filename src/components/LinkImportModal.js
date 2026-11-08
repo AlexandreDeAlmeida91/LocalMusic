@@ -1,10 +1,11 @@
+import { findOnlineLyrics } from '../services/onlineLyrics';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { youtubeFallback, expandImportLinks, assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
 import { readableImportError } from '../services/linkParsing';
 
-export default function LinkImportModal({ visible, onClose, onImported, onFindExisting }) {
+export default function LinkImportModal({ visible, onClose, onImported, onFindExisting, onLyrics }) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
@@ -16,6 +17,8 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
   const choose = useRef(null);
   const save = useRef(onImported);
   save.current = onImported;
+  const attach = useRef(onLyrics);
+  attach.current = onLyrics;
   const lookup = useRef(onFindExisting);
   lookup.current = onFindExisting;
 
@@ -77,6 +80,10 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
         if (controller.signal.aborted) break;
         current.jobID = `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
         let downloaded;
+        let lyricsTask;
+        const lyricsController = new AbortController();
+        const stopLyrics = () => lyricsController.abort();
+        controller.signal.addEventListener('abort', stopLyrics);
         setFraction(null);
         updateRow(i, { status: 'Recherche…' });
         try {
@@ -97,7 +104,8 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           }
           if (controller.signal.aborted) throw new Error('Annulé');
           if (await skipExisting(i, prepared)) continue;
-          updateRow(i, { status: 'Téléchargement…', title: prepared.metadata?.title });
+          lyricsTask = findOnlineLyrics(prepared.metadata, lyricsController.signal).catch(() => ({status:'Paroles indisponibles'}));
+          updateRow(i, { detail: 'Paroles : recherche en parallèle…', status: 'Téléchargement…', title: prepared.metadata?.title });
           try {
             downloaded = await downloadPrepared(prepared, current.jobID);
           } catch (directError) {
@@ -124,9 +132,20 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           current.saving = false;
           updateRow(i, { title: result.song.title, status: result.duplicate ? 'Déjà dans la bibliothèque' : 'Ajouté ✓' });
           if (result.duplicate) skipped++; else completed++;
+          if (!result.duplicate && lyricsTask) {
+            setPhase('Son ajouté · fin de la recherche des paroles…');
+            const lyrics = await lyricsTask;
+            if (!controller.signal.aborted) {
+              current.saving = true;
+              const status = await attach.current(result.song.id, lyrics);
+              updateRow(i, {detail: status});
+            }
+          }
         } catch (e) {
           updateRow(i, { status: controller.signal.aborted ? 'Annulé' : 'Échec', detail: controller.signal.aborted ? '' : readableImportError(e) });
         } finally {
+          lyricsController.abort();
+          controller.signal.removeEventListener('abort', stopLyrics);
           current.saving = false;
           if (downloaded?.uri) await FileSystem.deleteAsync(downloaded.uri, { idempotent: true }).catch(() => {});
         }
@@ -160,7 +179,7 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
         <TextInput value={input} onChangeText={setInput} editable={!busy} multiline autoCapitalize="none" autoCorrect={false}
           keyboardType="url" placeholder="https://… ; https://…" placeholderTextColor="#8e88a9" style={styles.input}
           accessibilityLabel="Liens des morceaux" />
-        <Text style={styles.small}>Spotify et les morceaux SoundCloud incompatibles sont recherchés sur YouTube. Une correspondance claire est sélectionnée automatiquement. L’audio est conservé en M4A ou MP3 sur cet iPhone.</Text>
+        <Text style={styles.small}>Spotify et les morceaux SoundCloud incompatibles sont recherchés sur YouTube. Une correspondance claire est sélectionnée automatiquement. L’audio est conservé en M4A ou MP3 sur cet iPhone. Les paroles sont recherchées en parallèle et associées au morceau lorsqu’une correspondance est trouvée.</Text>
         {!!error && <Text style={styles.error}>{error}</Text>}
         <Pressable onPress={busy ? cancel : start} accessibilityRole="button" style={styles.primary}>
           <Text style={styles.primaryText}>{busy ? 'Annuler l’import' : 'Télécharger'}</Text>

@@ -216,6 +216,8 @@ function LibraryScreen() {
     findImportedSong,
     repairAudio,
     removeSong,
+    attachOnlineLyrics,
+    searchSongLyrics,
     addOrReplaceLyrics,
     removeLyrics,
     changeSongArtwork,
@@ -322,6 +324,8 @@ function LibraryScreen() {
         onPress: () => addOrReplaceLyrics(song)
       }
     ];
+
+    if (!song.lyricsUri) actions.push({text: 'Rechercher les paroles en ligne', onPress: () => searchSongLyrics(song)});
 
     if (song.lyricsUri) {
       actions.push({
@@ -673,7 +677,7 @@ function LibraryScreen() {
 
       <MiniPlayer />
       <PlayerModal />
-      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} onFindExisting={findImportedSong} />
+      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} onFindExisting={findImportedSong} onLyrics={attachOnlineLyrics} />
 
       <CreatePlaylistModal
         visible={createVisible}

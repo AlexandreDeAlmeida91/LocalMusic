@@ -19,8 +19,10 @@ const DEFAULT_FONT_SIZE = 24;
 export default function LyricsModal({
   visible,
   song,
+  onSearch,
   onClose
 }) {
+  const [searching, setSearching] = useState(false);
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
@@ -162,10 +164,15 @@ export default function LyricsModal({
             </View>
           ) : (
             <Text style={styles.empty}>
-              Aucune parole disponible pour ce morceau.
+              {song?.lyricsStatus || 'Aucune parole disponible pour ce morceau.'}
             </Text>
           )}
 
+          {!!song?.lyricsSource && <Text style={styles.artist}>Source : {song.lyricsSource}</Text>}
+          {!lyrics && onSearch && <Pressable disabled={searching} style={styles.fontButton}
+            onPress={async () => { setSearching(true); try { await onSearch(); } finally { setSearching(false); } }}>
+            <Text style={styles.fontButtonText}>{searching ? 'Recherche en cours…' : 'Rechercher les paroles en ligne'}</Text>
+          </Pressable>}
           <View style={styles.bottomSpace} />
         </ScrollView>
       </SafeAreaView>

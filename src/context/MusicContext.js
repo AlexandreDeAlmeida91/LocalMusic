@@ -1,3 +1,5 @@
+import { findOnlineLyrics } from '../services/onlineLyrics';
+import { ensureDirectories, LYRICS_DIR } from '../services/storage';
 import { findExistingImport } from '../services/importDedup';
 import React, {
   createContext,
@@ -298,6 +300,51 @@ export function MusicProvider({ children }) {
     setSongs(result.songs);
     return result;
   }, []);
+
+  const lyricsJobs = useRef(new Set());
+  const attachOnlineLyrics = useCallback(async (songId, result) => {
+    let song = songsRef.current.find(s => s.id === songId);
+    if (!song || song.lyricsUri || song.lyricsPath) return 'Paroles déjà présentes';
+    let uri;
+    try {
+      if (result.text) {
+        await ensureDirectories([LYRICS_DIR]);
+        uri = resolveLocalPath(`Lyrics/${songId}-auto-${Date.now()}.txt`);
+        await FileSystem.writeAsStringAsync(uri, result.text);
+      }
+      song = songsRef.current.find(s => s.id === songId);
+      if (!song || song.lyricsUri || song.lyricsPath) {
+        if (uri) await FileSystem.deleteAsync(uri, {idempotent:true});
+        return 'Paroles déjà présentes ou morceau retiré';
+      }
+      const updated = songsRef.current.map(s => s.id === songId ? {...s,
+        lyricsUri: uri || null, lyricsStatus: result.status,
+        lyricsSource: result.source || null, lyricsSourceUrl: result.sourceUrl || null,
+        lyricsUpdatedAt: new Date().toISOString()} : s);
+      const previous = songsRef.current;
+      songsRef.current = updated;
+      setSongs(updated);
+      try { await saveLibrary(updated); }
+      catch (e) {
+        if (songsRef.current === updated) { songsRef.current = previous; setSongs(previous); }
+        throw e;
+      }
+      return result.status;
+    } catch (e) {
+      if (uri) await FileSystem.deleteAsync(uri, {idempotent:true}).catch(() => {});
+      return 'Enregistrement des paroles impossible';
+    }
+  }, []);
+
+  const searchSongLyrics = useCallback(async (song) => {
+    if (lyricsJobs.current.has(song.id)) return;
+    lyricsJobs.current.add(song.id);
+    try {
+      const result = await findOnlineLyrics(song);
+      const status = await attachOnlineLyrics(song.id, result);
+      setError(status);
+    } finally { lyricsJobs.current.delete(song.id); }
+  }, [attachOnlineLyrics]);
 
   const importSongs = useCallback(async () => {
     setImporting(true);
@@ -787,6 +834,8 @@ export function MusicProvider({ children }) {
     findImportedSong,
     repairAudio,
     removeSong,
+    attachOnlineLyrics,
+    searchSongLyrics,
     addOrReplaceLyrics,
     removeLyrics,
     changeSongArtwork,
