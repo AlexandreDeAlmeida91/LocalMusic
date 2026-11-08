@@ -337,6 +337,33 @@ export function MusicProvider({ children }) {
     }
   }, []);
 
+  const saveChosenLyrics = useCallback(async (song, result) => {
+    const text = String(result.text || '').trim();
+    if (!text || text.length > 60000) throw new Error('Ajoute un texte de 1 à 60 000 caractères.');
+    const before = songsRef.current.find(s => s.id === song.id);
+    if (!before) throw new Error('Ce morceau a été supprimé.');
+    const uri = resolveLocalPath(`Lyrics/${song.id}-manual-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
+    try {
+      await ensureDirectories([LYRICS_DIR]);
+      await FileSystem.writeAsStringAsync(uri, text);
+      const latest = songsRef.current.find(s => s.id === song.id);
+      if (!latest || latest.lyricsUri !== before.lyricsUri || latest.lyricsUpdatedAt !== before.lyricsUpdatedAt)
+        throw new Error('Les paroles ont changé entre-temps. Rouvre ce morceau.');
+      const previous = songsRef.current;
+      const updated = previous.map(s => s.id === song.id ? {...s, lyricsUri: uri, lyricsPath: null,
+        lyricsStatus: 'Paroles disponibles', lyricsSource: result.source || 'Texte personnel',
+        lyricsSourceUrl: result.sourceUrl || null, lyricsUpdatedAt: new Date().toISOString()} : s);
+      songsRef.current = updated; setSongs(updated);
+      try { await saveLibrary(updated); }
+      catch (e) { if (songsRef.current === updated) { songsRef.current = previous; setSongs(previous); } throw e; }
+    } catch (e) {
+      await FileSystem.deleteAsync(uri, {idempotent:true}).catch(() => {});
+      throw e;
+    }
+    await deleteLyrics(before.lyricsUri || before.lyricsPath);
+    return true;
+  }, []);
+
   const searchSongLyrics = useCallback(async (song) => {
     if (lyricsJobs.current.has(song.id)) return;
     lyricsJobs.current.add(song.id);
@@ -470,39 +497,15 @@ export function MusicProvider({ children }) {
     ]
   );
 
-  const addOrReplaceLyrics = useCallback(
-    async (song) => {
-      try {
-        const lyricsUri = await pickAndStoreLyrics(
-          song.id,
-          song.lyricsUri
-        );
-
-        if (!lyricsUri) return false;
-
-        const updated = songs.map((item) =>
-          item.id === song.id
-            ? {
-                ...item,
-                lyricsUri,
-                lyricsUpdatedAt: new Date().toISOString()
-              }
-            : item
-        );
-
-        setSongs(updated);
-        await saveLibrary(updated);
-        return true;
-      } catch (e) {
-        setError(
-          e?.message ||
-          'Impossible d’ajouter les paroles.'
-        );
-        return false;
-      }
-    },
-    [songs]
-  );
+  const addOrReplaceLyrics = useCallback(async (song) => {
+    const temporaryId = song.id + '-import-' + Date.now();
+    const uri = await pickAndStoreLyrics(temporaryId);
+    if (!uri) return false;
+    try {
+      const text = await FileSystem.readAsStringAsync(uri);
+      return await saveChosenLyrics(song, {text, source:'Fichier TXT'});
+    } finally { await deleteLyrics(uri); }
+  }, [saveChosenLyrics]);
 
   const removeLyrics = useCallback(
     async (song) => {
@@ -512,6 +515,10 @@ export function MusicProvider({ children }) {
             ? {
                 ...item,
                 lyricsUri: null,
+                lyricsPath: null,
+                lyricsSource: null,
+                lyricsSourceUrl: null,
+                lyricsStatus: null,
                 lyricsUpdatedAt: null
               }
             : item
@@ -836,6 +843,7 @@ export function MusicProvider({ children }) {
     repairAudio,
     removeSong,
     attachOnlineLyrics,
+    saveChosenLyrics,
     searchSongLyrics,
     addOrReplaceLyrics,
     removeLyrics,

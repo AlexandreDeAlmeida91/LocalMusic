@@ -26,3 +26,24 @@ test('write failure cleans temporary text and preserves audio/library',async()=>
 test('existing manual lyrics never overwritten',async()=>{
  const h=harness(false,true);await h.attach('song-1',{text:'Synthetic'});assert.equal(h.events.length,0);assert.equal(h.songsRef.current[0].lyricsUri,'manual.txt');
 });
+let chosen;
+babel.traverse(ast,{VariableDeclarator(p){if(p.node.id.name==='saveChosenLyrics')chosen=p.node.init.arguments[0];}});
+function chosenHarness(fail=false, concurrent=false){
+ const old={id:'s',title:'Original',lyricsUri:'old.txt',lyricsPath:'Lyrics/old.txt'};
+ const songsRef={current:[old]};const deleted=[];
+ const fs={writeAsStringAsync:async()=>{if(concurrent)songsRef.current=[];},deleteAsync:async u=>deleted.push(u)};
+ const save=new Function('FileSystem','songsRef','ensureDirectories','LYRICS_DIR','resolveLocalPath','saveLibrary','setSongs','deleteLyrics','return '+generate(chosen).code)(fs,songsRef,async()=>{},'Lyrics/',s=>s,async()=>{if(fail)throw Error('disk');},()=>{},async u=>deleted.push(u));
+ return {save,songsRef,deleted,old};
+}
+test('chosen lyrics replace safely and clear previous persisted path',async()=>{
+ const h=chosenHarness();await h.save(h.old,{text:'My words'});
+ assert.equal(h.songsRef.current[0].lyricsPath,null);assert.equal(h.songsRef.current[0].title,'Original');
+ assert.deepEqual(h.deleted,['old.txt']);
+});
+test('failed chosen save restores original lyrics',async()=>{
+ const h=chosenHarness(true);await assert.rejects(()=>h.save(h.old,{text:'My words'}));
+ assert.equal(h.songsRef.current[0],h.old);assert.ok(!h.deleted.includes('old.txt'));
+});
+test('concurrent deletion cannot resurrect song',async()=>{
+ const h=chosenHarness(false,true);await assert.rejects(()=>h.save(h.old,{text:'My words'}));assert.equal(h.songsRef.current.length,0);
+});

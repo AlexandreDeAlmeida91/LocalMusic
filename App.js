@@ -19,6 +19,7 @@ import SongRow from './src/components/SongRow';
 import PlaybackModeBar from './src/components/PlaybackModeBar';
 import PlaylistArtwork from './src/components/PlaylistArtwork';
 import AmbientBackground from './src/components/AmbientBackground';
+import LyricsEditorModal from './src/components/LyricsEditorModal';
 import LinkImportModal from './src/components/LinkImportModal';
 import { ensurePlayer } from './src/services/player';
 
@@ -217,7 +218,7 @@ function LibraryScreen() {
     repairAudio,
     removeSong,
     attachOnlineLyrics,
-    searchSongLyrics,
+    saveChosenLyrics,
     addOrReplaceLyrics,
     removeLyrics,
     changeSongArtwork,
@@ -236,6 +237,7 @@ function LibraryScreen() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [manageSongsVisible, setManageSongsVisible] = useState(false);
+  const [lyricsEditorSong, setLyricsEditorSong] = useState(null);
   const [linkImportVisible, setLinkImportVisible] = useState(false);
   const addMusic = () => Alert.alert('Ajouter un morceau', '', [
     { text: 'Coller un lien', onPress: () => setLinkImportVisible(true) },
@@ -321,11 +323,11 @@ function LibraryScreen() {
         text: song.lyricsUri
           ? 'Remplacer les paroles'
           : 'Ajouter des paroles',
-        onPress: () => addOrReplaceLyrics(song)
+        onPress: () => setLyricsEditorSong(song)
       }
     ];
 
-    if (!song.lyricsUri) actions.push({text: 'Rechercher les paroles en ligne', onPress: () => searchSongLyrics(song)});
+
 
     if (song.lyricsUri) {
       actions.push({
@@ -677,6 +679,7 @@ function LibraryScreen() {
 
       <MiniPlayer />
       <PlayerModal />
+      <LyricsEditorModal song={lyricsEditorSong} onClose={() => setLyricsEditorSong(null)} onSave={saveChosenLyrics} onImport={addOrReplaceLyrics} />
       <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} onFindExisting={findImportedSong} onLyrics={attachOnlineLyrics} />
 
       <CreatePlaylistModal

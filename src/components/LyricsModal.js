@@ -10,6 +10,8 @@ import {
   View
 } from 'react-native';
 import { readLyrics } from '../services/lyrics';
+import LyricsEditorModal from './LyricsEditorModal';
+import {useMusic} from '../context/MusicContext';
 import AmbientBackground from './AmbientBackground';
 
 const MIN_FONT_SIZE = 19;
@@ -19,10 +21,11 @@ const DEFAULT_FONT_SIZE = 24;
 export default function LyricsModal({
   visible,
   song,
-  onSearch,
   onClose
 }) {
-  const [searching, setSearching] = useState(false);
+  const {saveChosenLyrics, addOrReplaceLyrics} = useMusic();
+  const [editing,setEditing] = useState(false);
+  useEffect(() => {setEditing(false);}, [visible, song?.id]);
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
@@ -169,12 +172,12 @@ export default function LyricsModal({
           )}
 
           {!!song?.lyricsSource && <Text style={styles.artist}>Source : {song.lyricsSource}</Text>}
-          {!lyrics && onSearch && <Pressable disabled={searching} style={styles.fontButton}
-            onPress={async () => { setSearching(true); try { await onSearch(); } finally { setSearching(false); } }}>
-            <Text style={styles.fontButtonText}>{searching ? 'Recherche en cours…' : 'Rechercher les paroles en ligne'}</Text>
-          </Pressable>}
+          <Pressable style={styles.fontButton} onPress={() => setEditing(true)}>
+            <Text style={styles.fontButtonText}>{lyrics ? 'Modifier les paroles' : 'Ajouter des paroles'}</Text>
+          </Pressable>
           <View style={styles.bottomSpace} />
         </ScrollView>
+        <LyricsEditorModal song={editing ? song : null} onClose={() => setEditing(false)} onSave={saveChosenLyrics} onImport={addOrReplaceLyrics} />
       </SafeAreaView>
     </Modal>
   );

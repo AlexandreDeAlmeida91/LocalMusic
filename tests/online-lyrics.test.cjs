@@ -29,3 +29,13 @@ test('cancellation and missing artist do not write lyrics',async()=>{
  assert.equal((await p.findOnlineLyrics({title:'Song'})).text,undefined);
  const c=new AbortController();c.abort();assert.equal((await p.findOnlineLyrics({title:'Song',artist:'Singer'},c.signal)).status,'Recherche interrompue');
 });
+test('manual results retain alternatives, remove duplicate and instrumental entries',()=>{
+ const p=load();const r={id:1,trackName:'Song',artistName:'Singer',plainLyrics:'Synthetic words for testing only.'};
+ const out=p.lyricCandidates([r,{...r,id:2},{...r,id:3,artistName:'Other'},{...r,id:4,instrumental:true},{}]);
+ assert.equal(out.length,2);assert.equal(out[1].artist,'Other');
+});
+test('manual search returns choices and rejects cancelled response',async()=>{
+ const p=load(async()=>response(JSON.stringify([{id:1,trackName:'Song',artistName:'Singer',plainLyrics:'Synthetic words for testing only.'}])));
+ assert.equal((await p.searchLyricsChoices('Song','Singer'))[0].id,'1');
+ const c=new AbortController();c.abort();await assert.rejects(()=>p.searchLyricsChoices('Song','Singer',c.signal));
+});

@@ -72,3 +72,31 @@ export async function findOnlineLyrics(metadata, signal) {
   } catch { if (signal?.aborted) return {status:'Recherche interrompue'}; }
   return {status:responded ? (japanese ? 'Rōmaji introuvable' : 'Paroles introuvables') : 'Services de paroles indisponibles'};
 }
+
+// Manual search deliberately includes approximate matches; the user previews and chooses.
+export function lyricCandidates(records) {
+  const seen = new Set();
+  return records.filter(r => r && !r.instrumental).map(r => ({
+    id: String(r.id), title:r.trackName || '', artist:r.artistName || '', album:r.albumName || '',
+    text:validatedText(String(r.plainLyrics || r.syncedLyrics || '').replace(/^\s*(?:\[\d+:\d+(?:[.:]\d+)?\])+\s?/gm,'')),
+    source:'LRCLIB', sourceUrl:`https://lrclib.net/api/get/${r.id}`
+  })).filter(r => {
+    if (!r.text) return false;
+    const fingerprint = key(r.artist)+'|'+key(r.title)+'|'+r.text;
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint); return true;
+  }).slice(0,20);
+}
+export async function searchLyricsChoices(title, artist, signal) {
+  if (!title.trim()) throw new Error('Indique un titre pour lancer la recherche.');
+  const records = JSON.parse(await request(`https://lrclib.net/api/search?q=${encodeURIComponent((artist+' '+title).trim())}`,signal));
+  if (!Array.isArray(records)) throw new Error('Réponse du service non reconnue.');
+  const results = lyricCandidates(records);
+  if (signal?.aborted) throw new Error('Recherche annulée');
+  if (!results.length) {
+    // Same strict romaji fallback as automatic import, but user still confirms it.
+    const roman = await findOnlineLyrics({title,artist},signal);
+    if (roman.text) results.push({...roman,id:roman.sourceUrl,title,artist});
+  }
+  return results;
+}

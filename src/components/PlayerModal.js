@@ -25,7 +25,6 @@ function formatTime(seconds) {
 export default function PlayerModal() {
   const {
     currentSong,
-    searchSongLyrics,
     activeQueueName,
     isPlaying,
     currentTime,
@@ -204,7 +203,6 @@ export default function PlayerModal() {
         <LyricsModal
           visible={lyricsVisible}
           song={currentSong}
-          onSearch={() => searchSongLyrics(currentSong)}
           onClose={() => setLyricsVisible(false)}
         />
       </SafeAreaView>
