@@ -137,8 +137,12 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
             const lyrics = await lyricsTask;
             if (!controller.signal.aborted) {
               current.saving = true;
-              const status = await attach.current(result.song.id, lyrics);
-              updateRow(i, {detail: status});
+              try {
+                const status = await attach.current(result.song.id, lyrics);
+                updateRow(i, {detail: status});
+              } catch {
+                updateRow(i, {detail: 'Son ajouté · enregistrement des paroles impossible. Réessaie depuis Paroles.'});
+              }
             }
           }
         } catch (e) {

@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { findOnlineLyrics } from '../services/onlineLyrics';
 import { ensureDirectories, LYRICS_DIR } from '../services/storage';
 import { findExistingImport } from '../services/importDedup';
