@@ -234,6 +234,15 @@ function LibraryScreen() {
   } = useMusic();
 
   const [tab, setTab] = useState('songs');
+  const [songSearch, setSongSearch] = useState('');
+  const filteredSongs = useMemo(() => {
+    const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const words = normalize(songSearch).trim().split(/\s+/).filter(Boolean);
+    return words.length ? songs.filter(song => {
+      const haystack = normalize(song.title + ' ' + (song.artist || ''));
+      return words.every(word => haystack.includes(word));
+    }) : songs;
+  }, [songs, songSearch]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [manageSongsVisible, setManageSongsVisible] = useState(false);
@@ -546,6 +555,26 @@ function LibraryScreen() {
 
       <SegmentedControl value={tab} onChange={setTab} />
       <PlaybackModeBar />
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          value={songSearch}
+          onChangeText={setSongSearch}
+          placeholder="Rechercher un titre ou un artiste"
+          placeholderTextColor="#aaa5c1"
+          accessibilityLabel="Rechercher dans les morceaux"
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+        />
+        {!!songSearch && <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Effacer la recherche"
+          onPress={() => setSongSearch('')}
+          style={styles.searchClear}
+        ><Text style={styles.searchClearText}>×</Text></Pressable>}
+      </View>
+
 
       {loadingLibrary ? (
         <View style={styles.center}>
@@ -572,7 +601,13 @@ function LibraryScreen() {
         </View>
       ) : (
         <FlatList
-          data={songs}
+          data={filteredSongs}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          ListEmptyComponent={<View style={styles.center}>
+            <Text style={styles.emptyTitle}>Aucun résultat</Text>
+            <Text style={styles.emptyText}>Essaie un autre titre ou nom d’artiste.</Text>
+          </View>}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <SongRow
@@ -752,6 +787,14 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  searchBar: {
+    marginHorizontal: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center',
+    borderRadius: 18, backgroundColor: '#19192f', borderWidth: 1, borderColor: '#39335b'
+  },
+  searchInput: {flex: 1, minHeight: 48, paddingHorizontal: 16, color: '#f6f3ff', fontSize: 16},
+  searchClear: {minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center'},
+  searchClearText: {color: '#b6a4ff', fontSize: 28},
+
   safe: {
     flex: 1,
     backgroundColor: '#070913'
