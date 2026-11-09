@@ -1,6 +1,6 @@
 import {lyricsAnalysisError} from '../services/lyricsAnalysisError';
 import React,{useState,useRef,useEffect} from 'react';
-import {Modal,SafeAreaView,ScrollView,View,Text,Pressable,ActivityIndicator,AppState} from 'react-native';
+import {Modal,SafeAreaView,ScrollView,View,Text,Pressable,ActivityIndicator,AppState,Share} from 'react-native';
 import {requireOptionalNativeModule} from 'expo';
 import {alignLyrics} from '../services/autoLyricsAlignment';
 import {timedLines} from '../services/lyricsTiming';
@@ -14,6 +14,7 @@ const stamp=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
 export default function AutoLyricsModal({song,text,onClose,onSave}){
  const [locale,setLocale]=useState('en-US'),[busy,setBusy]=useState(false),[fraction,setFraction]=useState(0);
  const [error,setError]=useState(''),[candidate,setCandidate]=useState(null),[saving,setSaving]=useState(false);
+ const [diagnostic,setDiagnostic]=useState(null),[showDiagnostic,setShowDiagnostic]=useState(false);
  const job=useRef(null),alive=useRef(true);
  const stop=()=>{const id=job.current;job.current=null;if(id)engine?.cancel(id).catch(()=>{});setBusy(false);};
  useEffect(()=>{
@@ -25,11 +26,17 @@ export default function AutoLyricsModal({song,text,onClose,onSave}){
  const start=async()=>{
   if(!engine){setError('Reconstruis et installe la nouvelle IPA pour activer le moteur local.');return;}
   const id=Date.now()+'-'+Math.random().toString(36).slice(2);
+  const started=Date.now();
+  setDiagnostic(null);setShowDiagnostic(false);
   job.current=id;setBusy(true);setError('');setCandidate(null);setFraction(0);
   try{
    const words=await engine.analyze(song.uri,locale,id);
    if(job.current!==id||!alive.current)return;
-   setCandidate(alignLyrics(text,words));
+   const elapsed=Math.round((Date.now()-started)/1000);
+   const transcript=words.map(w=>`[${stamp(w.start)}] ${w.text}`).join('\n');
+   setDiagnostic({elapsed,count:words.length,transcript,locale});
+   try {setCandidate(alignLyrics(text,words));}
+   catch(e){setShowDiagnostic(true);throw e;}
   }catch(e){if(job.current===id&&alive.current)setError(lyricsAnalysisError(e));}
   finally{if(job.current===id){job.current=null;if(alive.current)setBusy(false);}}
  };
@@ -47,10 +54,18 @@ export default function AutoLyricsModal({song,text,onClose,onSave}){
     <Text style={white}>{song.title}</Text>
     <Text style={white}>Analyse unique sur cet iPhone, sans envoi du son. La lecture peut continuer pendant l’analyse. Ce moteur de reconnaissance vocale peut échouer sur le chant ou les remixes. Garde l’application ouverte. Aucune modification avant validation.</Text>
     <Text style={white}>Choisis la langue chantée. Le texte doit suivre exactement les passages et répétitions du morceau. Le japonais en romaji n’est pas pris en charge par cet essai.</Text>
-    <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{languages.map(([id,label])=><Pressable key={id} disabled={busy||saving} style={[button,locale===id&&{backgroundColor:'#7250dc'}]} onPress={()=>{setLocale(id);setCandidate(null);}}><Text style={white}>{label}</Text></Pressable>)}</View>
+    <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{languages.map(([id,label])=><Pressable key={id} disabled={busy||saving} style={[button,locale===id&&{backgroundColor:'#7250dc'}]} onPress={()=>{setLocale(id);setCandidate(null);setDiagnostic(null);setShowDiagnostic(false);setError('');}}><Text style={white}>{label}</Text></Pressable>)}</View>
     {!busy&&<Pressable disabled={saving} style={button} onPress={start}><Text style={white}>Analyser le fichier audio</Text></Pressable>}
     {busy&&<><ActivityIndicator color="#b8a2ff"/><Text style={white}>Audio traité : {Math.round(fraction*100)} %</Text><Pressable style={button} onPress={stop}><Text style={white}>Annuler l’analyse</Text></Pressable></>}
     {!!error&&<Text style={{color:'#ff9caa'}}>{error}</Text>}
+    {diagnostic&&<View style={{padding:14,borderRadius:12,backgroundColor:'#1b1b30',gap:10}}>
+     <Text style={[white,{fontWeight:'700'}]}>Résultat de la reconnaissance</Text>
+     <Text style={white}>Analyse terminée en {diagnostic.elapsed} s · {diagnostic.count} segments reconnus · {diagnostic.locale}</Text>
+     <Text style={white}>Ce texte est ce que le moteur a compris. Il peut être incorrect. Il ne remplace pas tes paroles.</Text>
+     <Pressable style={button} onPress={()=>setShowDiagnostic(v=>!v)}><Text style={white}>{showDiagnostic?'Masquer le texte reconnu':'Afficher le texte reconnu'}</Text></Pressable>
+     {showDiagnostic&&<Text selectable style={white}>{diagnostic.transcript||'Aucun texte reconnu.'}</Text>}
+     <Pressable style={button} onPress={async()=>{try{await Share.share({message:`Diagnostic Peak Music\n${song.title}\nLangue : ${diagnostic.locale}\nAnalyse : ${diagnostic.elapsed} s\n\n${diagnostic.transcript}`});}catch(e){setError('Impossible de partager le diagnostic. Tu peux sélectionner et copier le texte.');}}}><Text style={white}>Partager le diagnostic</Text></Pressable>
+    </View>}
     {candidate&&<>
      <Text style={white}>Repères proposés : {candidate.times.filter(t=>t!==null).length}/{candidate.times.length} lignes. Les estimations sont approximatives. Les lignes non repérées restent sans animation. Touche une ligne datée pour vérifier, surtout les refrains.</Text>
      <Pressable disabled={saving} style={button} onPress={save}><Text style={white}>{saving?'Enregistrement…':'Valider ces repères'}</Text></Pressable>
