@@ -1,3 +1,4 @@
+import {lyricsAnalysisError} from '../services/lyricsAnalysisError';
 import React,{useState,useRef,useEffect} from 'react';
 import {Modal,SafeAreaView,ScrollView,View,Text,Pressable,ActivityIndicator,AppState} from 'react-native';
 import {requireOptionalNativeModule} from 'expo';
@@ -26,11 +27,10 @@ export default function AutoLyricsModal({song,text,onClose,onSave}){
   const id=Date.now()+'-'+Math.random().toString(36).slice(2);
   job.current=id;setBusy(true);setError('');setCandidate(null);setFraction(0);
   try{
-   TrackPlayer.pause();
    const words=await engine.analyze(song.uri,locale,id);
    if(job.current!==id||!alive.current)return;
    setCandidate(alignLyrics(text,words));
-  }catch(e){if(job.current===id&&alive.current)setError(e.message||'Analyse impossible.');}
+  }catch(e){if(job.current===id&&alive.current)setError(lyricsAnalysisError(e));}
   finally{if(job.current===id){job.current=null;if(alive.current)setBusy(false);}}
  };
  const save=async()=>{
@@ -45,7 +45,7 @@ export default function AutoLyricsModal({song,text,onClose,onSave}){
    <Pressable disabled={saving} style={button} onPress={()=>{stop();onClose();}}><Text style={white}>Fermer</Text></Pressable></View>
    <ScrollView contentContainerStyle={{padding:18,gap:10}}>
     <Text style={white}>{song.title}</Text>
-    <Text style={white}>Analyse unique sur cet iPhone, sans envoi du son. Ce moteur de reconnaissance vocale peut échouer sur le chant ou les remixes. Garde l’application ouverte. Aucune modification avant validation.</Text>
+    <Text style={white}>Analyse unique sur cet iPhone, sans envoi du son. La lecture peut continuer pendant l’analyse. Ce moteur de reconnaissance vocale peut échouer sur le chant ou les remixes. Garde l’application ouverte. Aucune modification avant validation.</Text>
     <Text style={white}>Choisis la langue chantée. Le texte doit suivre exactement les passages et répétitions du morceau. Le japonais en romaji n’est pas pris en charge par cet essai.</Text>
     <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{languages.map(([id,label])=><Pressable key={id} disabled={busy||saving} style={[button,locale===id&&{backgroundColor:'#7250dc'}]} onPress={()=>{setLocale(id);setCandidate(null);}}><Text style={white}>{label}</Text></Pressable>)}</View>
     {!busy&&<Pressable disabled={saving} style={button} onPress={start}><Text style={white}>Analyser le fichier audio</Text></Pressable>}

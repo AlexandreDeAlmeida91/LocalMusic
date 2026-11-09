@@ -1,3 +1,4 @@
+import GlowingLyricLine from './GlowingLyricLine';
 import AutoLyricsModal from './AutoLyricsModal';
 import {timedLines, validTiming, activeLyric} from '../services/lyricsTiming';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -164,21 +165,14 @@ export default function LyricsModal({
                 }
 
                 return (
-                  <Text
+                  <GlowingLyricLine
                     key={`${index}-${line}`}
-                    selectable
+                    active={timed && active===index}
                     onLayout={e=>{positions.current[index]=e.nativeEvent.layout.y;}}
-                    style={[
-                      styles.lyricLine,
-                      active===index && {color: '#b8a2ff', backgroundColor: 'rgba(105,70,255,0.18)'},
-                      {
-                        fontSize,
-                        lineHeight: Math.round(fontSize * 1.42)
-                      }
-                    ]}
+                    style={[styles.lyricLine,{fontSize,lineHeight:Math.round(fontSize*1.42)}]}
                   >
                     {line}
-                  </Text>
+                  </GlowingLyricLine>
                 );
               })}
             </View>

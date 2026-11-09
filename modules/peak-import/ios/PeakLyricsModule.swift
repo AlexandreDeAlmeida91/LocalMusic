@@ -107,7 +107,14 @@ private struct LyricsFailure: LocalizedError {
                  "end": offset + $0.timestamp + $0.duration, "confidence": $0.confidence]
               }))
             } else if let error = error {
-              complete(.failure(error))
+              let failure = error as NSError
+              if (failure.domain == "kAFAssistantErrorDomain" && failure.code == 1110) ||
+                   failure.localizedDescription.lowercased() == "no speech detected" {
+                // Instrumental/silent chunk: keep its absolute offset and continue.
+                complete(.success([]))
+              } else {
+                complete(.failure(error))
+              }
             }
           }
         }
@@ -122,6 +129,9 @@ private struct LyricsFailure: LocalizedError {
       speechTask?.cancel(); speechTask = nil
       start += length
       progress(min(1, start / duration))
+    }
+    guard !words.isEmpty else {
+      throw LyricsFailure(message: "Aucune voix reconnue sur l’ensemble du morceau. Le moteur vocal peut ne pas reconnaître le chant. Essaie les paroles synchronisées en ligne.")
     }
     return words
   }
