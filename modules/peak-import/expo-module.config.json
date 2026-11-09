@@ -1,4 +1,11 @@
 {
-  "platforms": ["apple"],
-  "apple": { "modules": ["PeakImportModule"] }
+  "platforms": [
+    "apple"
+  ],
+  "apple": {
+    "modules": [
+      "PeakImportModule",
+      "PeakLyricsModule"
+    ]
+  }
 }

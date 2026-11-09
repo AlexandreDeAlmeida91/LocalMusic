@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name = 'PeakImport'
-  s.version = '1.8.5'
+  s.version = '1.8.7'
   s.summary = 'On-device audio import for Peak Music'
   s.description = 'Local YouTube extraction and audio downloads, with no conversion server.'
   s.license = { :type => 'MIT', :file => 'YouTubeKit/LICENSE' }
@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
   s.swift_version = '5.9'
   s.source_files = '**/*.swift'
-  s.frameworks = 'AVFoundation', 'JavaScriptCore'
+  s.frameworks = 'AVFoundation', 'JavaScriptCore', 'Speech'
   s.resource_bundles = { 'PeakImportResources' => ['YouTubeKit/Resources/*.js', 'YouTubeKit/Resources/*LICENSE', 'YouTubeKit/LICENSE'] }
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

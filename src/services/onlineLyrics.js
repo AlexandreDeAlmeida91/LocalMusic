@@ -1,3 +1,4 @@
+import {parseLrc} from './lyricsTiming';
 // All requests run on the phone. Never infer a match from the title alone.
 export const key = value => String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const cjk = /[\u3040-\u30ff\u3400-\u9fff]/;
@@ -52,7 +53,7 @@ export async function findOnlineLyrics(metadata, signal) {
     const choices = exact.map(r => ({r,text:String(r.plainLyrics || r.syncedLyrics || '').replace(/^\s*(?:\[\d+:\d+(?:[.:]\d+)?\])+\s?/gm,'').trim()}));
     japanese ||= choices.some(c => cjk.test(c.text));
     const valid = choices.filter(c => validatedText(c.text));
-    if (valid.length && new Set(valid.map(c=>c.text)).size === 1) return {text:valid[0].text,source:'LRCLIB',sourceUrl:`https://lrclib.net/api/get/${valid[0].r.id}`,status:'Paroles disponibles'};
+    if (valid.length && new Set(valid.map(c=>c.text)).size === 1) { const parsed=parseLrc(valid[0].r.syncedLyrics); const timing=parsed && validatedText(parsed.text) ? parsed : null; return {text:timing?.text || valid[0].text,timing,source:'LRCLIB',sourceUrl:`https://lrclib.net/api/get/${valid[0].r.id}`,status:'Paroles disponibles'}; }
     if (exact.length && exact.every(r=>r.instrumental === true)) return {status:'Instrumental'};
   } catch { if (signal?.aborted) return {status:'Recherche interrompue'}; }
   // AnimeSongLyrics supplies romanized Japanese text, only with exact artist + title.
@@ -76,11 +77,12 @@ export async function findOnlineLyrics(metadata, signal) {
 // Manual search deliberately includes approximate matches; the user previews and chooses.
 export function lyricCandidates(records) {
   const seen = new Set();
-  return records.filter(r => r && !r.instrumental).map(r => ({
+  return records.filter(r => r && !r.instrumental).map(r => { const timing=parseLrc(r.syncedLyrics); return ({
+    timing,
     id: String(r.id), title:r.trackName || '', artist:r.artistName || '', album:r.albumName || '',
-    text:validatedText(String(r.plainLyrics || r.syncedLyrics || '').replace(/^\s*(?:\[\d+:\d+(?:[.:]\d+)?\])+\s?/gm,'')),
+    text:validatedText(timing?.text || String(r.plainLyrics || r.syncedLyrics || '').replace(/^\s*(?:\[\d+:\d+(?:[.:]\d+)?\])+\s?/gm,'')),
     source:'LRCLIB', sourceUrl:`https://lrclib.net/api/get/${r.id}`
-  })).filter(r => {
+  }); }).sort((a,b)=>Number(!!b.timing)-Number(!!a.timing)).filter(r => {
     if (!r.text) return false;
     const fingerprint = key(r.artist)+'|'+key(r.title)+'|'+r.text;
     if (seen.has(fingerprint)) return false;

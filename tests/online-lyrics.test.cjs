@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const {transformSync} = require('@babel/core');
 function load(fetch) {
  const code=transformSync(fs.readFileSync('src/services/onlineLyrics.js','utf8'),{configFile:false,babelrc:false,plugins:[require.resolve('@babel/plugin-transform-modules-commonjs')]}).code;
- const m={exports:{}};new Function('module','exports','fetch',code)(m,m.exports,fetch);return m.exports;
+ const timingCode=transformSync(fs.readFileSync('src/services/lyricsTiming.js','utf8'),{configFile:false,babelrc:false,plugins:[require.resolve('@babel/plugin-transform-modules-commonjs')]}).code;
+ const t={exports:{}};new Function('module','exports',timingCode)(t,t.exports);
+ const m={exports:{}};new Function('module','exports','fetch','require',code)(m,m.exports,fetch,()=>t.exports);return m.exports;
 }
 const response = body => ({ok:true,text:async()=>body});
 test('exact artist required, metadata cleaned, no kanji output',()=>{
@@ -38,4 +40,9 @@ test('manual search returns choices and rejects cancelled response',async()=>{
  const p=load(async()=>response(JSON.stringify([{id:1,trackName:'Song',artistName:'Singer',plainLyrics:'Synthetic words for testing only.'}])));
  assert.equal((await p.searchLyricsChoices('Song','Singer'))[0].id,'1');
  const c=new AbortController();c.abort();await assert.rejects(()=>p.searchLyricsChoices('Song','Singer',c.signal));
+});
+test('synced choices retain timing and the exact displayed lyric lines',async()=>{
+ const p=load(async()=>response(JSON.stringify([{id:1,trackName:'Song',artistName:'Singer',plainLyrics:'Synthetic words for testing only.',syncedLyrics:'[00:01.50]Synthetic first line\n[00:07.25]Synthetic second line'}])));
+ const r=await p.searchLyricsChoices('Song','Singer');
+ assert.deepEqual(r[0].timing.times,[1.5,7.25]);assert.equal(r[0].text,r[0].timing.text);
 });

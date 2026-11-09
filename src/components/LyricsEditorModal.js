@@ -30,7 +30,7 @@ export default function LyricsEditorModal({song,onClose,onSave,onImport}) {
     if(!content?.trim()){setError('Ajoute du texte ou choisis un résultat.');return;}
     if(content.length>60000){setError('Le texte dépasse 60 000 caractères.');return;}
     setSaving(true);setError('');
-    try{await onSave(song,{text:content.trim(),source:mode==='paste'?'Texte personnel':selected.source,sourceUrl:mode==='paste'?null:selected.sourceUrl});onClose();}
+    try{await onSave(song,{text:content.trim(),timing:mode==='paste'?null:selected?.timing,source:mode==='paste'?'Texte personnel':selected.source,sourceUrl:mode==='paste'?null:selected.sourceUrl});onClose();}
     catch(e){setError(e.message || 'Enregistrement impossible');}finally{setSaving(false);}
   };
   const confirmSave=()=>song?.lyricsUri?Alert.alert('Remplacer les paroles ?', 'Le nouveau texte remplacera les paroles associées à ce morceau.',[{text:'Annuler',style:'cancel'},{text:'Remplacer',onPress:save}]):save();
@@ -56,7 +56,7 @@ export default function LyricsEditorModal({song,onClose,onSave,onImport}) {
             {button('Rechercher',search,busy||saving)}
             {busy&&<ActivityIndicator color="#b29dff"/>}
             {results.map((r,i)=><Pressable key={r.id+'-'+i} disabled={saving} onPress={()=>setSelected(r)} style={[s.card,selected===r&&s.selected]} accessibilityRole="button">
-              <Text style={s.title}>{r.artist} — {r.title}</Text><Text style={s.hint}>{r.source}{r.album?' · '+r.album:''}</Text>
+              <Text style={s.title}>{r.artist} — {r.title}</Text><Text style={s.hint}>{r.source}{r.timing?' · Synchronisées':''}{r.album?' · '+r.album:''}</Text>
               <Text style={s.hint} numberOfLines={3}>{r.text}</Text>
             </Pressable>)}
             {selected&&<View style={s.card}><Text style={s.title}>Aperçu complet</Text><Text selectable style={s.preview}>{selected.text}</Text></View>}

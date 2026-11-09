@@ -10,7 +10,7 @@ babel.traverse(ast,{VariableDeclarator(p){if(p.node.id.name==='attachOnlineLyric
 function harness(fail=false, existing=false) {
  const events=[];const songsRef={current:[{id:'song-1',title:'Original',lyricsUri:existing?'manual.txt':null}]};
  const FileSystem={writeAsStringAsync:async(uri,text)=>{events.push(['write',uri,text]);if(fail)throw Error('disk');},deleteAsync:async uri=>events.push(['delete',uri])};
- const attach=new Function('FileSystem','songsRef','ensureDirectories','LYRICS_DIR','resolveLocalPath','saveLibrary','setSongs','return '+generate(callback).code)(FileSystem,songsRef,async()=>{},'Lyrics/',p=>'file:///'+p,async s=>events.push(['save',s]),()=>{});
+ const attach=new Function('FileSystem','songsRef','ensureDirectories','LYRICS_DIR','resolveLocalPath','saveLibrary','setSongs','validTiming','return '+generate(callback).code)(FileSystem,songsRef,async()=>{},'Lyrics/',p=>'file:///'+p,async s=>events.push(['save',s]),()=>{},()=>false);
  return {attach,events,songsRef};
 }
 test('FileSystem namespace is imported from Expo legacy before executing save',()=>{
@@ -32,7 +32,7 @@ function chosenHarness(fail=false, concurrent=false){
  const old={id:'s',title:'Original',lyricsUri:'old.txt',lyricsPath:'Lyrics/old.txt'};
  const songsRef={current:[old]};const deleted=[];
  const fs={writeAsStringAsync:async()=>{if(concurrent)songsRef.current=[];},deleteAsync:async u=>deleted.push(u)};
- const save=new Function('FileSystem','songsRef','ensureDirectories','LYRICS_DIR','resolveLocalPath','saveLibrary','setSongs','deleteLyrics','return '+generate(chosen).code)(fs,songsRef,async()=>{},'Lyrics/',s=>s,async()=>{if(fail)throw Error('disk');},()=>{},async u=>deleted.push(u));
+ const save=new Function('FileSystem','songsRef','ensureDirectories','LYRICS_DIR','resolveLocalPath','saveLibrary','setSongs','deleteLyrics','validTiming','return '+generate(chosen).code)(fs,songsRef,async()=>{},'Lyrics/',s=>s,async()=>{if(fail)throw Error('disk');},()=>{},async u=>deleted.push(u),()=>false);
  return {save,songsRef,deleted,old};
 }
 test('chosen lyrics replace safely and clear previous persisted path',async()=>{

@@ -320,7 +320,7 @@ export function MusicProvider({ children }) {
         return 'Paroles déjà présentes ou morceau retiré';
       }
       const updated = songsRef.current.map(s => s.id === songId ? {...s,
-        lyricsUri: uri || null, lyricsStatus: result.status,
+        lyricsUri: uri || null, lyricsTiming: validTiming(result.timing, result.text) ? result.timing : null, lyricsStatus: result.status,
         lyricsSource: result.source || null, lyricsSourceUrl: result.sourceUrl || null,
         lyricsUpdatedAt: new Date().toISOString()} : s);
       const previous = songsRef.current;
@@ -351,7 +351,7 @@ export function MusicProvider({ children }) {
       if (!latest || latest.lyricsUri !== before.lyricsUri || latest.lyricsUpdatedAt !== before.lyricsUpdatedAt)
         throw new Error('Les paroles ont changé entre-temps. Rouvre ce morceau.');
       const previous = songsRef.current;
-      const updated = previous.map(s => s.id === song.id ? {...s, lyricsUri: uri, lyricsPath: null, lyricsTiming: null,
+      const updated = previous.map(s => s.id === song.id ? {...s, lyricsUri: uri, lyricsPath: null, lyricsTiming: validTiming(result.timing, text) ? result.timing : null,
         lyricsStatus: 'Paroles disponibles', lyricsSource: result.source || 'Texte personnel',
         lyricsSourceUrl: result.sourceUrl || null, lyricsUpdatedAt: new Date().toISOString()} : s);
       songsRef.current = updated; setSongs(updated);
@@ -366,7 +366,7 @@ export function MusicProvider({ children }) {
   }, []);
 
   const saveLyricsTiming = useCallback(async (songId, timing) => {
-    if (!validTiming(timing, timing.text)) throw new Error('Marque chaque ligne dans l’ordre avant d’enregistrer.');
+    if (!validTiming(timing, timing.text)) throw new Error('Les repères de synchronisation sont incomplets ou incohérents.');
     const song = songsRef.current.find(s => s.id === songId);
     if (!song?.lyricsUri) throw new Error('Les paroles ne sont plus disponibles.');
     const raw = await FileSystem.readAsStringAsync(song.lyricsUri);

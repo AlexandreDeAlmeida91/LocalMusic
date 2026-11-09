@@ -1,9 +1,8 @@
-import {TrackPlayer} from '../services/player';
+import AutoLyricsModal from './AutoLyricsModal';
 import {timedLines, validTiming, activeLyric} from '../services/lyricsTiming';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   SafeAreaView,
@@ -26,18 +25,14 @@ export default function LyricsModal({
   song,
   onClose
 }) {
-  const {saveChosenLyrics, addOrReplaceLyrics, saveLyricsTiming, currentTime, isPlaying, togglePlayPause, seekTo} = useMusic();
-  const [syncing,setSyncing] = useState(false);
-  const [marks,setMarks] = useState([]);
-  const marksRef = useRef([]);
-  const [saving,setSaving] = useState(false);
-  const [syncError,setSyncError] = useState('');
+  const {saveChosenLyrics, addOrReplaceLyrics, saveLyricsTiming, currentTime} = useMusic();
+  const [autoOpen,setAutoOpen] = useState(false);
   const scrollRef = useRef(null);
   const positions = useRef({});
   const blockY = useRef(0);
   const [follow,setFollow] = useState(true);
   const [editing,setEditing] = useState(false);
-  useEffect(() => {setEditing(false);setSyncError('');setSyncing(false);setMarks([]);marksRef.current=[];setFollow(true);positions.current={};}, [visible, song?.id, song?.lyricsUri]);
+  useEffect(() => {setAutoOpen(false);setEditing(false);setFollow(true);positions.current={};}, [visible, song?.id, song?.lyricsUri]);
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
@@ -69,46 +64,11 @@ export default function LyricsModal({
 
   const lines = useMemo(() => timedLines(lyrics), [lyrics]);
   const timed = validTiming(song?.lyricsTiming, lyrics);
-  const active = syncing ? marks.length : timed ? activeLyric(song.lyricsTiming.times, currentTime) : -1;
+  const active = timed ? activeLyric(song.lyricsTiming.times, currentTime) : -1;
   useEffect(() => {
     if (visible && follow && active >= 0 && positions.current[active] !== undefined)
       scrollRef.current?.scrollTo({y: Math.max(0, blockY.current + positions.current[active] - 90), animated:true});
   }, [active, follow, visible, fontSize]);
-  const beginSync = () => {
-    marksRef.current=[];setMarks([]);setSyncError('');setFollow(true);setSyncing(true);
-    TrackPlayer.seekTo(0);TrackPlayer.play();
-  };
-  const mark = () => {
-    try {
-      const t=TrackPlayer.getProgress().position;
-      const old=marksRef.current;
-      if (!isPlaying || old.length >= lines.length) return;
-      if (!Number.isFinite(t) || t<0 || (old.length && t<=old[old.length-1])) {
-        setSyncError('Le repère doit être après la ligne précédente. Annule les repères à refaire.');return;
-      }
-      const next=[...old,t];marksRef.current=next;setMarks(next);setSyncError('');
-      if(next.length===lines.length)TrackPlayer.pause();
-    } catch {setSyncError('Impossible de lire la position du morceau.');}
-  };
-  const undo = () => {
-    const old=marksRef.current;
-    if (!old.length) return;
-    seekTo(Math.max(0, old[old.length-1]-2));
-    marksRef.current=old.slice(0,-1);setMarks(marksRef.current);setSyncError('');
-  };
-  const saveTiming = async () => {
-    setSaving(true);
-    try {await saveLyricsTiming(song.id,{text:lyrics,times:[...marksRef.current]});setSyncing(false);}
-    catch(e){setSyncError(e.message || 'Enregistrement impossible');}
-    finally{setSaving(false);}
-  };
-  const close = () => {
-    if(saving)return;
-    if(syncing)Alert.alert('Quitter la synchronisation ?', 'Les nouveaux repères non enregistrés seront perdus.', [
-      {text:'Continuer',style:'cancel'}, {text:'Quitter',onPress:onClose}
-    ]);else onClose();
-  };
-
   const decreaseFont = () => {
     setFontSize((current) => Math.max(MIN_FONT_SIZE, current - 2));
   };
@@ -122,13 +82,13 @@ export default function LyricsModal({
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
-      onRequestClose={close}
+      onRequestClose={onClose}
     >
       <SafeAreaView style={styles.safe}>
         <AmbientBackground stronger />
         <View style={styles.header}>
           <Pressable
-            onPress={close}
+            onPress={onClose}
             hitSlop={12}
             style={styles.backButton}
           >
@@ -165,23 +125,8 @@ export default function LyricsModal({
         </View>
 
         {!!lyrics && <View style={{padding:12,gap:8}}>
-          {syncing ? <>
-            <Text style={styles.artist}>Repères : {marks.length}/{lines.length}</Text>
-            <Text style={{color:'#fff'}}>Touche au début de chaque ligne chantée. Les lignes répétées doivent être présentes dans le texte.</Text>
-            <Pressable style={styles.syncButton} disabled={saving || !isPlaying || marks.length===lines.length} onPress={mark}>
-              <Text style={styles.fontButtonText}>{marks.length===lines.length ? 'Toutes les lignes sont marquées' : 'Cette ligne commence maintenant'}</Text>
-            </Pressable>
-            <View style={{flexDirection:'row',gap:12}}>
-              <Pressable disabled={saving} onPress={togglePlayPause}><Text style={styles.artist}>{isPlaying?'Pause':'Lecture'}</Text></Pressable>
-              <Pressable disabled={saving || !marks.length} onPress={undo}><Text style={styles.artist}>Annuler le dernier</Text></Pressable>
-              <Pressable disabled={saving} onPress={()=>setSyncing(false)}><Text style={styles.artist}>Annuler</Text></Pressable>
-            </View>
-            {marks.length===lines.length && <Pressable style={styles.syncButton} disabled={saving} onPress={saveTiming}><Text style={styles.fontButtonText}>{saving?'Enregistrement…':'Enregistrer les repères'}</Text></Pressable>}
-          </> : <Pressable style={styles.syncButton} onPress={beginSync}>
-            <Text style={styles.fontButtonText}>{timed?'Refaire la synchronisation depuis le début':'Synchroniser depuis le début'}</Text>
-          </Pressable>}
-          {!!syncError && <Text style={{color:'#ff9caa'}}>{syncError}</Text>}
-          {(timed || syncing) && <Pressable onPress={()=>setFollow(v=>!v)}><Text style={styles.artist}>Défilement automatique : {follow?'activé':'désactivé'}</Text></Pressable>}
+          <Pressable style={styles.syncButton} onPress={()=>setAutoOpen(true)}><Text style={styles.fontButtonText}>Essayer la synchronisation automatique locale</Text></Pressable>
+          {timed && <Pressable onPress={()=>setFollow(v=>!v)}><Text style={styles.artist}>Défilement automatique : {follow?'activé':'désactivé'}</Text></Pressable>}
         </View>}
         <ScrollView
           ref={scrollRef}
@@ -244,11 +189,12 @@ export default function LyricsModal({
           )}
 
           {!!song?.lyricsSource && <Text style={styles.artist}>Source : {song.lyricsSource}</Text>}
-          <Pressable disabled={syncing} style={styles.fontButton} onPress={() => setEditing(true)}>
+          <Pressable style={styles.fontButton} onPress={() => setEditing(true)}>
             <Text style={styles.fontButtonText}>{lyrics ? 'Modifier les paroles' : 'Ajouter des paroles'}</Text>
           </Pressable>
           <View style={styles.bottomSpace} />
         </ScrollView>
+        {autoOpen && visible && <AutoLyricsModal song={song} text={lyrics} onClose={()=>setAutoOpen(false)} onSave={saveLyricsTiming} />}
         <LyricsEditorModal song={editing ? song : null} onClose={() => setEditing(false)} onSave={saveChosenLyrics} onImport={addOrReplaceLyrics} />
       </SafeAreaView>
     </Modal>
