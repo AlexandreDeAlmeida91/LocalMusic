@@ -22,16 +22,46 @@ export function alignLyrics(text, segments) {
     else if(dp[(i+1)*width+j]>dp[i*width+j+1])i++;else j++;
   }
   const coverage=total/expected.length;
-  let base=0;
-  const times=lines.map((line,n)=>{
-    const count=tokens(line).length, matches=matched[n], first=matches[0];
-    // Require the first word and most of each line, not just a generic word in a chorus.
-    const reliable=count>0&&first&&first.expected===base&&matches.length/count>=0.7;
+  const counts=lines.map(line=>tokens(line).length);
+  const times=lines.map(()=>null), ends=lines.map(()=>null), kinds=lines.map(()=>'missing');
+  let base=0, previous=-1;
+  for(let n=0;n<lines.length;n++){
+    const count=counts[n], matches=matched[n], first=matches[0], last=matches[matches.length-1];
+    // Accept a strong phrase anywhere, even when the first word was not heard.
+    const strong=count>0&&first&&matches.length>=Math.min(3,count)&&matches.length/count>=0.7;
+    if(strong){
+      const start=heard[first.heard].start, end=heard[last.heard].end;
+      const compact=last.heard-first.heard+1<=Math.max(count*2,4)&&end-start<=Math.max(count*1.8,5);
+      if(compact&&start>previous){
+        times[n]=start;ends[n]=Math.max(start+0.1,end);
+        kinds[n]=first.expected===base?'detected':'estimated';
+        previous=start;
+      }
+    }
     base+=count;
-    if(!reliable)throw new Error('Correspondance insuffisante sur la ligne '+(n+1)+'. Aucun repère enregistré. Vérifie le texte et la langue.');
-    return heard[first.heard].start;
-  });
-  const timing={text,times,source:'Analyse locale iOS · expérimentale',coverage};
-  if(coverage<0.8 || !validTiming(timing,text))throw new Error('Alignement trop incertain. Aucun repère enregistré.');
+  }
+  const anchors=times.map((t,i)=>t===null?-1:i).filter(i=>i>=0);
+  if(!anchors.length)throw new Error('Aucune ligne suffisamment reconnue dans le morceau. Vérifie les paroles et la langue.');
+  // Fill only short internal gaps bounded by recognized audio on both sides.
+  // Never extrapolate the intro or ending from a single anchor.
+  for(let k=0;k<anchors.length-1;k++){
+    const left=anchors[k],right=anchors[k+1],gap=right-left-1;
+    const from=ends[left],to=times[right],span=to-from;
+    if(gap<1||gap>3||span<gap*0.5||span>20)continue;
+    const weight=counts.slice(left+1,right).reduce((a,b)=>a+Math.max(1,b),0);
+    let at=from;
+    for(let n=left+1;n<right;n++){
+      times[n]=at;at+=span*Math.max(1,counts[n])/weight;
+      ends[n]=at;kinds[n]='estimated';
+    }
+  }
+  let next=null;
+  for(let n=times.length-1;n>=0;n--){
+    if(times[n]===null)continue;
+    if(next!==null)ends[n]=Math.min(ends[n],next);
+    next=times[n];
+  }
+  const timing={text,times,ends,kinds,partial:true,source:'Analyse locale iOS · repères partiels',coverage};
+  if(!validTiming(timing,text))throw new Error('Repères incohérents. Aucun changement enregistré.');
   return timing;
 }

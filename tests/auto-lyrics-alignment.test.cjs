@@ -12,7 +12,7 @@ test('alignment yields line starts with repeated chorus and accented text',()=>{
  assert.deepEqual(r.times,[2,8,14]);assert.equal(r.coverage,1);
 });
 test('missing verse, wrong words, and absent first word cannot invent timings',()=>{
- assert.throws(()=>alignLyrics('first line\nsecond line',[segment('first line',1)]));
+ assert.deepEqual(alignLyrics('first line\nsecond line',[segment('first line',1)]).times,[1,null]);
  assert.throws(()=>alignLyrics('first line',[segment('line',3)]));
  assert.throws(()=>alignLyrics('first line',[segment('wrong song',3)]));
 });
@@ -33,4 +33,27 @@ test('native prototype explicitly refuses network fallback and keeps cancellatio
  assert.match(native,/request.requiresOnDeviceRecognition = true/);
  assert.match(native,/90_000_000_000/);
  assert.match(native,/exporter\?\.cancelExport/);
+});
+test('later lines anchor even when first line is unheard',()=>{
+ const r=alignLyrics('missing opening words\nbright stars shine\nanother missing ending',[segment('bright',12),segment('stars',13),segment('shine',14)]);
+ assert.deepEqual(r.times,[null,12,null]);assert.equal(timing.validTiming(JSON.parse(JSON.stringify(r)),r.text),true);
+ assert.equal(timing.activeLyric(r.times,2,r.ends),-1);
+ assert.equal(timing.activeLyric(r.times,13,r.ends),1);
+ assert.equal(timing.activeLyric(r.times,30,r.ends),-1);
+});
+test('short bounded gap estimated while intro and outro stay unknown',()=>{
+ const r=alignLyrics('unknown intro\nbright stars shine\nwords not heard\ndark clouds gather\nunknown outro',[segment('bright',5),segment('stars',6),segment('shine',7),segment('dark',14),segment('clouds',15),segment('gather',16)]);
+ assert.deepEqual(r.times,[null,5,8,14,null]);assert.equal(r.kinds[2],'estimated');
+});
+test('missing initial word can anchor a sufficiently long phrase',()=>{
+ const r=alignLyrics('the bright stars shine',[segment('bright',5),segment('stars',6),segment('shine',7)]);
+ assert.equal(r.times[0],5);assert.equal(r.kinds[0],'estimated');
+});
+test('large uncertain gaps are not interpolated',()=>{
+ const r=alignLyrics('bright stars shine\nunknown middle\ndark clouds gather',[segment('bright',5),segment('stars',6),segment('shine',7),segment('dark',80),segment('clouds',81),segment('gather',82)]);
+ assert.equal(r.times[1],null);
+});
+test('partial timing rejects overlaps and arrays of only missing values',()=>{
+ assert.equal(timing.validTiming({text:'a\nb',partial:true,times:[null,null],ends:[null,null]},'a\nb'),false);
+ assert.equal(timing.validTiming({text:'a\nb',partial:true,times:[1,3],ends:[5,6]},'a\nb'),false);
 });

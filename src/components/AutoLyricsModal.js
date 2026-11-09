@@ -52,9 +52,9 @@ export default function AutoLyricsModal({song,text,onClose,onSave}){
     {busy&&<><ActivityIndicator color="#b8a2ff"/><Text style={white}>Audio traité : {Math.round(fraction*100)} %</Text><Pressable style={button} onPress={stop}><Text style={white}>Annuler l’analyse</Text></Pressable></>}
     {!!error&&<Text style={{color:'#ff9caa'}}>{error}</Text>}
     {candidate&&<>
-     <Text style={white}>Repères proposés — touche une ligne pour écouter à cet endroit. Vérifie avant d’enregistrer, surtout les refrains.</Text>
+     <Text style={white}>Repères proposés : {candidate.times.filter(t=>t!==null).length}/{candidate.times.length} lignes. Les estimations sont approximatives. Les lignes non repérées restent sans animation. Touche une ligne datée pour vérifier, surtout les refrains.</Text>
      <Pressable disabled={saving} style={button} onPress={save}><Text style={white}>{saving?'Enregistrement…':'Valider ces repères'}</Text></Pressable>
-     {timedLines(text).map((line,i)=><Pressable key={i} style={button} onPress={()=>{TrackPlayer.seekTo(candidate.times[i]);TrackPlayer.play();}}><Text style={white}>{stamp(candidate.times[i])} — {line}</Text></Pressable>)}
+     {timedLines(text).map((line,i)=><Pressable key={i} disabled={candidate.times[i]===null} style={[button,candidate.times[i]===null&&{opacity:0.5}]} onPress={()=>{TrackPlayer.seekTo(candidate.times[i]);TrackPlayer.play();}}><Text style={white}>{candidate.times[i]===null?'Non repérée':stamp(candidate.times[i])+' · '+(candidate.kinds?.[i]==='estimated'?'Estimée':'Détectée')} — {line}</Text></Pressable>)}
     </>}
    </ScrollView>
   </SafeAreaView>

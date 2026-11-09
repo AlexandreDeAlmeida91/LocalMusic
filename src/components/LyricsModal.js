@@ -65,7 +65,7 @@ export default function LyricsModal({
 
   const lines = useMemo(() => timedLines(lyrics), [lyrics]);
   const timed = validTiming(song?.lyricsTiming, lyrics);
-  const active = timed ? activeLyric(song.lyricsTiming.times, currentTime) : -1;
+  const active = timed ? activeLyric(song.lyricsTiming.times, currentTime, song.lyricsTiming.ends) : -1;
   useEffect(() => {
     if (visible && follow && active >= 0 && positions.current[active] !== undefined)
       scrollRef.current?.scrollTo({y: Math.max(0, blockY.current + positions.current[active] - 90), animated:true});
