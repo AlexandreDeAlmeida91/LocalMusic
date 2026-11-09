@@ -1,3 +1,4 @@
+import {validTiming} from '../services/lyricsTiming';
 import * as FileSystem from 'expo-file-system/legacy';
 import { findOnlineLyrics } from '../services/onlineLyrics';
 import { ensureDirectories, LYRICS_DIR } from '../services/storage';
@@ -350,7 +351,7 @@ export function MusicProvider({ children }) {
       if (!latest || latest.lyricsUri !== before.lyricsUri || latest.lyricsUpdatedAt !== before.lyricsUpdatedAt)
         throw new Error('Les paroles ont changé entre-temps. Rouvre ce morceau.');
       const previous = songsRef.current;
-      const updated = previous.map(s => s.id === song.id ? {...s, lyricsUri: uri, lyricsPath: null,
+      const updated = previous.map(s => s.id === song.id ? {...s, lyricsUri: uri, lyricsPath: null, lyricsTiming: null,
         lyricsStatus: 'Paroles disponibles', lyricsSource: result.source || 'Texte personnel',
         lyricsSourceUrl: result.sourceUrl || null, lyricsUpdatedAt: new Date().toISOString()} : s);
       songsRef.current = updated; setSongs(updated);
@@ -362,6 +363,22 @@ export function MusicProvider({ children }) {
     }
     await deleteLyrics(before.lyricsUri || before.lyricsPath);
     return true;
+  }, []);
+
+  const saveLyricsTiming = useCallback(async (songId, timing) => {
+    if (!validTiming(timing, timing.text)) throw new Error('Marque chaque ligne dans l’ordre avant d’enregistrer.');
+    const song = songsRef.current.find(s => s.id === songId);
+    if (!song?.lyricsUri) throw new Error('Les paroles ne sont plus disponibles.');
+    const raw = await FileSystem.readAsStringAsync(song.lyricsUri);
+    const text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (text !== timing.text) throw new Error('Les paroles ont changé. Recommence la synchronisation.');
+    const latest = songsRef.current.find(s => s.id === songId);
+    if (!latest || latest.lyricsUri !== song.lyricsUri) throw new Error('Le morceau a changé.');
+    const previous = songsRef.current;
+    const updated = previous.map(s => s.id === songId ? {...s, lyricsTiming: timing} : s);
+    songsRef.current = updated; setSongs(updated);
+    try { await saveLibrary(updated); }
+    catch (e) { if (songsRef.current === updated) {songsRef.current = previous; setSongs(previous);} throw e; }
   }, []);
 
   const searchSongLyrics = useCallback(async (song) => {
@@ -515,6 +532,7 @@ export function MusicProvider({ children }) {
             ? {
                 ...item,
                 lyricsUri: null,
+                lyricsTiming: null,
                 lyricsPath: null,
                 lyricsSource: null,
                 lyricsSourceUrl: null,
@@ -844,6 +862,7 @@ export function MusicProvider({ children }) {
     removeSong,
     attachOnlineLyrics,
     saveChosenLyrics,
+    saveLyricsTiming,
     searchSongLyrics,
     addOrReplaceLyrics,
     removeLyrics,
