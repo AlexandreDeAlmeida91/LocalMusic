@@ -280,7 +280,7 @@ test('mobile AbortSignal without throwIfAborted still cancels before networking'
   await assert.rejects(service.requestText('https://www.youtube.com', signal), { name: 'AbortError' });
 });
 
-test('repair keeps song identity, metadata and original while committing a new path', async () => {
+test('repair keeps song identity, metadata while releasing the original after commit', async () => {
   const m = libraryMock({ repair: true });
   const original = { id: 'old', uri: 'file:///documents/LocalMusic/Music/old.mp3', audioPath: 'Music/old.mp3', title: 'Song', lyricsPath: 'Lyrics/old.txt', artworkPath: 'Artwork/old.jpg' };
   m.files.set(original.uri, 'original audio');
@@ -288,7 +288,7 @@ test('repair keeps song identity, metadata and original while committing a new p
   assert.equal(result.song.id, original.id);
   assert.equal(result.song.lyricsPath, original.lyricsPath);
   assert.equal(result.song.artworkPath, original.artworkPath);
-  assert.equal(m.files.get(original.uri), 'original audio');
+  assert.equal(m.files.has(original.uri), false);
   assert.equal(m.files.get(result.song.uri), 'normalized audio');
   assert.equal(result.song.originalAudioPath, original.audioPath);
   assert.equal(m.stored()[0].audioRepairVersion, 1);
@@ -302,26 +302,26 @@ test('repair metadata failure discards the new copy and keeps the original', asy
   assert.deepEqual(m.files,before);
 });
 
-test('M4A repair preserves extension and original, and does not normalize twice', async () => {
+test('M4A repair preserves extension, releases original, and does not normalize twice', async () => {
   const m = libraryMock({ repair: true });
   const original = { id: 'aac', uri: 'file:///documents/LocalMusic/Music/aac.m4a', audioPath: 'Music/aac.m4a', title: 'AAC' };
   m.files.set(original.uri, 'original AAC');
   const result = await m.library.repairStoredSong(original, [original]);
   assert.match(result.song.uri, /\.m4a$/);
   assert.equal(result.song.originalAudioPath, original.audioPath);
-  assert.equal(m.files.get(original.uri), 'original AAC');
+  assert.equal(m.files.has(original.uri), false);
   const again = await m.library.repairStoredSong(result.song, result.songs);
   assert.equal(again.changed, false);
 });
 
-test('downloaded M4A is normalized before commit and original retained', async () => {
+test('downloaded M4A is normalized before commit and original released', async () => {
   const m = libraryMock({ repair: true });
   const uri = 'file:///cache/new.m4a';
   m.files.set(uri, 'original AAC');
   const result = await m.library.commitDownloadedSong({ uri, extension: 'm4a', title: 'AAC', sourceKey: 'youtube:aac' }, []);
   assert.match(result.song.uri, /-normalized\.m4a$/);
   assert.equal(result.song.audioRepairVersion, 1);
-  assert.equal(m.files.get('file:///documents/LocalMusic/' + result.song.originalAudioPath), 'original AAC');
+  assert.equal(m.files.has('file:///documents/LocalMusic/' + result.song.originalAudioPath), false);
 });
 
 test('M4A bridge reports a stale IPA and forwards native failures', async () => {
@@ -479,4 +479,25 @@ test('missing artwork never fails audio import', async () => {
  const result=await m.library.commitDownloadedSong({...download,artworkCandidates:[{url:'https://i.scdn.co/image/missing',source:'spotify'}]},[]);
  assert.equal(result.song.artworkUri,null);
  assert.equal(m.files.get(result.song.uri),'audio bytes');
+});
+
+test('cleanup preserves missing/empty replacements, active originals and untracked files', async()=>{
+ const m=libraryMock();
+ const base='file:///documents/LocalMusic/';
+ const song={audioPath:'Music/x-normalized.m4a',originalAudioPath:'Music/x.m4a',duration:123,audioRepairVersion:1};
+ m.files.set(base+song.originalAudioPath,'original');
+ await m.library.cleanupNormalizedOriginals([song]);
+ assert.equal(m.files.get(base+song.originalAudioPath),'original');
+ m.files.set(base+song.audioPath,'');
+ await m.library.cleanupNormalizedOriginals([song]);
+ assert.equal(m.files.get(base+song.originalAudioPath),'original');
+ m.files.set(base+song.audioPath,'corrected');
+ await m.library.cleanupNormalizedOriginals([song,{audioPath:song.originalAudioPath}]);
+ assert.equal(m.files.get(base+song.originalAudioPath),'original');
+ m.files.set(base+'Music/untracked.m4a','keep');
+ await m.library.cleanupNormalizedOriginals([song]);
+ assert.equal(m.files.has(base+song.originalAudioPath),false);
+ assert.equal(m.files.get(base+'Music/untracked.m4a'),'keep');
+ await m.library.cleanupNormalizedOriginals([song]);
+ assert.equal(m.files.get(base+song.audioPath),'corrected');
 });

@@ -402,6 +402,8 @@ export async function loadLibrary() {
     await saveLibrary(sorted);
   }
 
+  // Existing installations also release tracked originals after loading.
+  await cleanupNormalizedOriginals(sorted);
   return sorted;
 }
 
@@ -412,6 +414,8 @@ export async function saveLibrary(songs) {
     LIBRARY_FILE,
     songs.map(toStoredSong)
   );
+  // Delete only after the corrected path has been committed successfully.
+  await cleanupNormalizedOriginals(songs);
 }
 
 export async function pickAndImportSongs() {
@@ -659,4 +663,25 @@ export async function downloadSongArtwork(candidates, id) {
     }
   }
   return null;
+}
+
+// Only tracked originals of successfully normalized songs are eligible.
+// Keep the metadata pointer as a recovery exclusion, even after deletion.
+export async function cleanupNormalizedOriginals(songs) {
+  const safePath = value => {
+    const path = relativeLocalPath(value);
+    return typeof path === 'string' && /^Music\/[a-zA-Z0-9_-]+\.(mp3|m4a)$/i.test(path) ? path : null;
+  };
+  const active = new Set(songs.flatMap(song => [safePath(song.audioPath), safePath(song.uri), safePath(song.fileName ? `Music/${song.fileName}` : null)]).filter(Boolean));
+  for (const song of songs) {
+    if (song.audioRepairVersion !== 1 || !Number.isFinite(song.duration) || song.duration <= 0) continue;
+    const original = safePath(song.originalAudioPath), corrected = safePath(song.audioPath);
+    if (!original || !corrected || original === corrected || active.has(original)) continue;
+    if (!/-(normalized|repair-[0-9]+)\.(mp3|m4a)$/i.test(corrected)) continue;
+    try {
+      const info = await FileSystem.getInfoAsync(resolveLocalPath(corrected));
+      if (!info.exists || info.isDirectory || !Number.isFinite(info.size) || info.size <= 0) continue;
+      await FileSystem.deleteAsync(resolveLocalPath(original), {idempotent:true});
+    } catch { /* Retry on the next load/save; cleanup never fails the library. */ }
+  }
 }
