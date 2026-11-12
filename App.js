@@ -216,7 +216,6 @@ function LibraryScreen() {
     importSongs,
     acceptDownloadedSong,
     findImportedSong,
-    repairAudio,
     removeSong,
     attachOnlineLyrics,
     saveChosenLyrics,
@@ -303,13 +302,6 @@ function LibraryScreen() {
 
   const openSongOptions = (song, playlist = null) => {
     const actions = [
-      ...(/\.(mp3|m4a)$/i.test(song.audioPath || song.uri || '') ? [{
-        text: 'Réparer la durée du morceau',
-        onPress: async () => {
-          try { Alert.alert('Réparation audio', await repairAudio(song)); }
-          catch (e) { Alert.alert('Réparation impossible', e.message); }
-        }
-      }] : []),
       {
         text: 'Modifier la pochette',
         onPress: () => {
