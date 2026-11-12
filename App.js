@@ -1,3 +1,4 @@
+import { sortSongs } from './src/services/songSort';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -234,15 +235,24 @@ function LibraryScreen() {
   } = useMusic();
 
   const [tab, setTab] = useState('songs');
+  const [songOrder, setSongOrder] = useState('title');
+  const sortedSongs = useMemo(() => sortSongs(songs, songOrder), [songs, songOrder]);
+  const songOrderLabels = {title:'Titre A–Z', newest:'Plus récents', oldest:'Plus anciens'};
+  const chooseSongOrder = () => Alert.alert('Trier les morceaux', 'Date d’ajout dans Peak Music', [
+    {text:'Plus récents en premier', onPress:()=>setSongOrder('newest')},
+    {text:'Plus anciens en premier', onPress:()=>setSongOrder('oldest')},
+    {text:'Titre A–Z', onPress:()=>setSongOrder('title')},
+    {text:'Annuler', style:'cancel'}
+  ]);
   const [songSearch, setSongSearch] = useState('');
   const filteredSongs = useMemo(() => {
     const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const words = normalize(songSearch).trim().split(/\s+/).filter(Boolean);
-    return words.length ? songs.filter(song => {
+    return words.length ? sortedSongs.filter(song => {
       const haystack = normalize(song.title + ' ' + (song.artist || ''));
       return words.every(word => haystack.includes(word));
-    }) : songs;
-  }, [songs, songSearch]);
+    }) : sortedSongs;
+  }, [sortedSongs, songSearch]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [createVisible, setCreateVisible] = useState(false);
   const [manageSongsVisible, setManageSongsVisible] = useState(false);
@@ -555,6 +565,7 @@ function LibraryScreen() {
 
       <SegmentedControl value={tab} onChange={setTab} />
       <PlaybackModeBar />
+      <Pressable accessibilityRole="button" accessibilityLabel="Trier les morceaux" onPress={chooseSongOrder} style={{alignSelf:'flex-end',padding:12,marginHorizontal:16,minHeight:44}}><Text style={{color:'#b6a4ff',fontWeight:'700',fontSize:15}}>Trier : {songOrderLabels[songOrder]} ▾</Text></Pressable>
       <View style={styles.searchBar}>
         <TextInput
           style={styles.searchInput}
@@ -612,7 +623,7 @@ function LibraryScreen() {
           renderItem={({ item }) => (
             <SongRow
               song={item}
-              queueSongs={songs}
+              queueSongs={sortedSongs}
               queueName="Bibliothèque"
               onMore={() => openSongOptions(item)}
               onLongPress={() => openSongOptions(item)}

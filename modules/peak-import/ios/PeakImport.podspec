@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name = 'PeakImport'
-  s.version = '1.8.11'
+  s.version = '1.8.12'
   s.summary = 'On-device audio import for Peak Music'
   s.description = 'Local YouTube extraction and audio downloads, with no conversion server.'
   s.license = { :type => 'MIT', :file => 'YouTubeKit/LICENSE' }
