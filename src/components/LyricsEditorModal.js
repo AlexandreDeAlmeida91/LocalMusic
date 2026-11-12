@@ -1,6 +1,7 @@
 import React, {useEffect,useRef,useState} from 'react';
 import {Modal,SafeAreaView,ScrollView,View,Text,TextInput,Pressable,ActivityIndicator,StyleSheet,KeyboardAvoidingView,Platform,Alert} from 'react-native';
-import {lyricIdentity,searchLyricsChoices} from '../services/onlineLyrics';
+import {lyricIdentity} from '../services/onlineLyrics';
+import {searchLyricsChoices} from '../services/cachedLyrics';
 import {readLyrics} from '../services/lyrics';
 
 export default function LyricsEditorModal({song,onClose,onSave,onImport}) {
@@ -18,10 +19,10 @@ export default function LyricsEditorModal({song,onClose,onSave,onImport}) {
     return ()=>{generation.current++;request.current?.abort();};
   },[song?.id]);
   const close=()=>{if(saving)return;generation.current++;request.current?.abort();onClose();};
-  const search=async()=>{
+  const search=async(force=false)=>{
     request.current?.abort();const c=new AbortController();request.current=c;
     setBusy(true);setError('');setSelected(null);setResults([]);
-    try{const found=await searchLyricsChoices(title,artist,c.signal);if(!c.signal.aborted){setResults(found);if(!found.length)setError('Aucune parole trouvée. Essaie un titre plus simple ou un autre nom d’artiste.');}}
+    try{const found=await searchLyricsChoices(title,artist,c.signal,force);if(!c.signal.aborted){setResults(found);if(!found.length)setError('Aucune parole trouvée. Essaie un titre plus simple ou un autre nom d’artiste.');}}
     catch(e){if(!c.signal.aborted)setError(e.message || 'Recherche impossible');}
     finally{if(request.current===c)setBusy(false);}
   };
@@ -53,7 +54,8 @@ export default function LyricsEditorModal({song,onClose,onSave,onImport}) {
             <Text style={s.hint}>Modifie les informations recherchées si le nom du fichier contient un remix, un anime ou le nom d’une chaîne. Le morceau ne sera pas renommé.</Text>
             <TextInput accessibilityLabel="Titre recherché" placeholder="Titre" placeholderTextColor="#999" style={s.input} value={title} onChangeText={setTitle} editable={!busy&&!saving}/>
             <TextInput accessibilityLabel="Artiste recherché" placeholder="Artiste" placeholderTextColor="#999" style={s.input} value={artist} onChangeText={setArtist} editable={!busy&&!saving}/>
-            {button('Rechercher',search,busy||saving)}
+            {button('Rechercher',()=>search(false),busy||saving)}
+            {button('Actualiser la recherche en ligne',()=>search(true),busy||saving)}
             {busy&&<ActivityIndicator color="#b29dff"/>}
             {results.map((r,i)=><Pressable key={r.id+'-'+i} disabled={saving} onPress={()=>setSelected(r)} style={[s.card,selected===r&&s.selected]} accessibilityRole="button">
               <Text style={s.title}>{r.artist} — {r.title}</Text><Text style={s.hint}>{r.source}{r.timing?' · Synchronisées':''}{r.album?' · '+r.album:''}</Text>

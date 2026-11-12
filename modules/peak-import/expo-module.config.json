@@ -6,6 +6,9 @@
     "modules": [
       "PeakImportModule",
       "PeakLyricsModule"
+    ],
+    "appDelegateSubscribers": [
+      "PeakImportAppDelegateSubscriber"
     ]
   }
 }

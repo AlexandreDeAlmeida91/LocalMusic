@@ -1,15 +1,24 @@
-import { findOnlineLyrics } from '../services/onlineLyrics';
+import {createBackgroundGate} from '../services/backgroundGate';
+import usePreference from '../hooks/usePreference';
+import {serialQueue, runWorkers, pendingImportRows} from '../services/workQueue';
+import {readImportJournal, writeImportJournal} from '../services/importJournal';
+import {beginCacheWork, cleanupStartup} from '../services/cacheStorage';
+import { findOnlineLyrics } from '../services/cachedLyrics';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, Switch } from 'react-native';
+import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, FlatList, StyleSheet, Text, TextInput, View, Switch } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { youtubeFallback, expandImportLinks, assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
+import { beginBackgroundImport, updateBackgroundImport, endBackgroundImport, subscribeBackgroundImport, youtubeFallback, expandImportLinks, assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
 import { readableImportError } from '../services/linkParsing';
 
-export default function LinkImportModal({ visible, onClose, onImported, onFindExisting, onLyrics }) {
-  const [allowYoutubeThumbnail, setAllowYoutubeThumbnail] = useState(false);
+export default function LinkImportModal({ visible, available=true, onClose, onImported, onFindExisting, onLyrics }) {
+  const [allowYoutubeThumbnail, setAllowYoutubeThumbnail] = usePreference('allowYoutubeThumbnail', false);
+  const [parallel, setParallel] = usePreference('parallelImports', true);
+  const [resume, setResume] = useState(null);
+  const [ready, setReady] = useState(false);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
+  const [backgroundMode, setBackgroundMode] = useState('');
   const [fraction, setFraction] = useState(null);
   const [rows, setRows] = useState([]);
   const [choice, setChoice] = useState(null);
@@ -25,148 +34,181 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
 
   const cancel = () => {
     const current = operation.current;
-    if (!current || current.saving) return;
+    if (!current) return;
     current.controller.abort();
     choose.current?.(null);
     choose.current = null;
     setChoice(null);
-    setPhase('Annulation…');
-    cancelNativeImport(current.jobID).catch(() => {});
+    setPhase('Pause après les enregistrements en cours…');
+    for (const id of current.jobs) cancelNativeImport(id).catch(() => {});
   };
 
   useEffect(() => {
+    let alive = true;
+    Promise.all([cleanupStartup(), readImportJournal()]).then(([,journal]) => {
+      if (!alive) return;
+      if (journal && pendingImportRows(journal.rows).length) setResume(journal);
+      setReady(true);
+    }).catch(e => {if(alive)setError(e.message);});
     const subscription = subscribeImportProgress(event => {
-      if (event.jobID !== operation.current?.jobID || operation.current?.controller.signal.aborted) return;
+      if (!operation.current?.jobs.has(event.jobID) || operation.current.controller.signal.aborted) return;
       setPhase(event.phase);
       setFraction(Number.isFinite(event.fraction) ? event.fraction : null);
     });
-    // iOS can suspend foreground work after locking the phone. Cancel cleanly
-    // rather than claiming that an unfinished import is available offline.
-    const state = AppState.addEventListener('change', value => {
-      if (value === 'background' && operation.current && !operation.current.saving) {
+    const background = subscribeBackgroundImport(event => {
+      const current = operation.current;
+      if (!current) return;
+      if (event.state === 'active') {
+        current.gate.setGranted(true);
+        setBackgroundMode('La poursuite de la playlist en arrière-plan est autorisée par iOS.');
+      } else if (event.state === 'expired') {
+        current.gate.setGranted(false);
         cancel();
-        setError('L’import a été interrompu en arrière-plan. Garde Peak Music ouvert pour réessayer.');
+        setError('iOS a arrêté le traitement ou celui-ci a été annulé. La file est conservée : touche Reprendre.');
       }
     });
-    return () => { subscription?.remove(); state.remove(); cancel(); };
+    const state = AppState.addEventListener('change', value => {
+      operation.current?.gate.setState(value);
+      if (value === 'background' && operation.current) {
+        setPhase('Import en arrière-plan · poursuite selon le temps accordé par iOS');
+      }
+    });
+    return () => { alive = false; subscription?.remove(); background?.remove(); state.remove(); cancel(); };
+
   }, []);
 
-  const updateRow = (index, patch) => setRows(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
-
-  const start = async () => {
-    if (operation.current) return;
+  const start = async (saved = null) => {
+    if (operation.current || !ready || !available) return;
     setError('');
-    let links = [...new Set(input.split(/[;\n\r]+/).map(s => s.trim()).filter(Boolean))];
-    if (!links.length || links.length > 20) { setError('Colle entre 1 et 20 liens, séparés par des ; ou des retours à la ligne.'); return; }
-    try { assertImportEngine(); } catch (e) { setError(e.message); return; }
+    const links = saved ? saved.rows.map(r=>r.url) : [...new Set(input.split(/[;\n\r]+/).map(s=>s.trim()).filter(Boolean))];
+    if (!links.length || (!saved && links.length > 20)) {setError('Colle entre 1 et 20 liens.');return;}
+    try {assertImportEngine();} catch(e) {setError(e.message);return;}
+    let finishCache;
+    try {finishCache = beginCacheWork();} catch(e) {setError(e.message);return;}
     const controller = new AbortController();
-    const current = { controller, jobID: '', saving: false };
+    const current = {controller, jobs:new Set(), gate:createBackgroundGate(AppState.currentState || 'active')};
+    const commit = serialQueue();
+    const choices = serialQueue();
     operation.current = current;
     setBusy(true);
-    setRows(links.map(url => ({ url, status: 'En attente' })));
-    let completed = 0, skipped = 0;
-    const skipExisting = async (index, candidate) => {
-      const song = await lookup.current(candidate);
-      if (!song) return false;
-      skipped++;
-      updateRow(index, { title: song.title, status: 'Déjà présent — ignoré' });
+    const journal = saved ? JSON.parse(JSON.stringify(saved)) : {rows:links.map(url=>({url,status:'En attente'})), expanded:false, input};
+    setInput(journal.input || links.join(' ; '));
+    const persist = () => writeImportJournal(journal);
+    const update = async (i, patch) => {
+      journal.rows[i] = {...journal.rows[i],...patch};
+      setRows([...journal.rows]);
+      await persist();
+      const done=journal.rows.filter(r=>!pendingImportRows([r]).length || r.status==='Échec').length;
+      await updateBackgroundImport(done,journal.rows.length).catch(()=>{});
+    };
+    const select = prepared => choices(async () => {
+      if(controller.signal.aborted)return null;
+      setPhase('Choix YouTube nécessaire · reviens dans Peak Music');
+      await current.gate.wait(controller.signal,true);
+      setPhase('Choisis la bonne version YouTube');
+      const selected = await new Promise(resolve=>{choose.current=resolve;setChoice(prepared);});
+      choose.current=null;setChoice(null);
+      return selected;
+    });
+    const skipExisting = async (i,candidate) => {
+      const song=await lookup.current(candidate);
+      if(!song)return false;
+      await update(i,{title:song.title,status:'Déjà présent — ignoré',detail:''});
       return true;
     };
     try {
-      const expanded = await expandImportLinks(links, controller.signal, setPhase);
-      links = expanded.links;
-      if (expanded.warnings.length) setError(expanded.warnings.join('\n'));
-      setRows(links.map(url => ({ url, status: 'En attente' })));
-      for (let i = 0; i < links.length; i++) {
-        if (controller.signal.aborted) break;
-        current.jobID = `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
+      await persist();
+      const mode=await beginBackgroundImport();
+      if(mode==='transfers')setBackgroundMode('Les fichiers directs peuvent continuer écran verrouillé. Les recherches et traitements reprendront au retour dans l’application.');
+      else setBackgroundMode('Poursuite de la playlist demandée à iOS. Ne ferme pas l’application depuis le sélecteur.');
+      if (!journal.expanded) {
+        const expanded=await expandImportLinks(links,controller.signal,setPhase);
+        journal.rows=expanded.links.map(url=>({url,status:'En attente'}));
+        journal.expanded=true;
+        if(expanded.warnings.length)setError(expanded.warnings.join('\n'));
+        await persist();
+      }
+      setRows([...journal.rows]);
+      const pending = journal.rows.map((row,i)=>({row,i})).filter(({row})=>pendingImportRows([row]).length);
+      await runWorkers(pending, parallel ? 2 : 1, async ({row,i}) => {
+        let jobID=row.jobID || `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
         let downloaded;
         let lyricsTask;
-        const lyricsController = new AbortController();
-        const stopLyrics = () => lyricsController.abort();
-        controller.signal.addEventListener('abort', stopLyrics);
-        setFraction(null);
-        updateRow(i, { status: 'Recherche…' });
+        const lyricsController=new AbortController();
+        const stop=()=>lyricsController.abort();
+        controller.signal.addEventListener('abort',stop);
         try {
-          if (await skipExisting(i, links[i])) continue;
-          let prepared = await prepareMusicLink(links[i], controller.signal, setPhase);
-          if (controller.signal.aborted) throw new Error('Annulé');
-          if (await skipExisting(i, prepared)) continue;
-          if (prepared.candidates?.length && !prepared.videoID) {
-            setPhase('Choisis la bonne version YouTube');
-            const selected = await new Promise(resolve => { choose.current = resolve; setChoice(prepared); });
-            choose.current = null;
-            setChoice(null);
-            if (!selected) {
-              updateRow(i, { status: controller.signal.aborted ? 'Annulé' : 'Ignoré' });
-              continue;
-            }
-            prepared.videoID = selected;
+          await current.gate.wait(controller.signal);
+          await update(i,{jobID,status:'Recherche…',detail:''});
+          if(await skipExisting(i,{url:row.url,videoID:row.videoID}))return;
+          let prepared=await prepareMusicLink(row.url,controller.signal,setPhase);
+          if(controller.signal.aborted)throw Error('Annulé');
+          if(await skipExisting(i,prepared))return;
+          // Keep only a stable video ID, never a temporary signed download URL.
+          if(row.videoID)prepared.videoID=row.videoID;
+          if(prepared.candidates?.length && !prepared.videoID) {
+            prepared.videoID=await select(prepared);
+            if(!prepared.videoID){await update(i,{status:controller.signal.aborted?'En pause':'Ignoré'});return;}
           }
-          if (controller.signal.aborted) throw new Error('Annulé');
-          if (await skipExisting(i, prepared)) continue;
-          lyricsTask = findOnlineLyrics(prepared.metadata, lyricsController.signal).catch(() => ({status:'Paroles indisponibles'}));
-          updateRow(i, { detail: 'Paroles : recherche en parallèle…', status: 'Téléchargement…', title: prepared.metadata?.title });
+          if(controller.signal.aborted)throw Error('Annulé');
+          if(await skipExisting(i,prepared))return;
+          await update(i,{videoID:prepared.videoID || null,title:prepared.metadata?.title,status:'Téléchargement…',detail:'Paroles : recherche en parallèle…'});
+          lyricsTask=findOnlineLyrics(prepared.metadata,lyricsController.signal).catch(()=>({status:'Paroles indisponibles'}));
+          await current.gate.wait(controller.signal);
+          current.jobs.add(jobID);
           try {
-            downloaded = await downloadPrepared(prepared, current.jobID, {allowYoutubeThumbnail});
-          } catch (directError) {
-            if (controller.signal.aborted) throw directError;
-            prepared = await youtubeFallback(prepared, controller.signal, setPhase);
-            if (!prepared.videoID) {
-              const selected = await new Promise(resolve => { choose.current = resolve; setChoice(prepared); });
-              choose.current = null;
-              setChoice(null);
-              if (!selected) { updateRow(i, { status: 'Ignoré' }); continue; }
-              prepared.videoID = selected;
-            }
-            if (controller.signal.aborted) throw new Error('Annulé');
-            if (await skipExisting(i, prepared)) continue;
-            // A fresh job ID prevents cancellation bookkeeping from affecting retry.
-            current.jobID += '-youtube';
-            downloaded = await downloadPrepared(prepared, current.jobID, {allowYoutubeThumbnail});
+            downloaded=await downloadPrepared(prepared,jobID,{allowYoutubeThumbnail});
+          } catch(e) {
+            if(controller.signal.aborted)throw e;
+            current.jobs.delete(jobID);
+            await current.gate.wait(controller.signal);
+            prepared=await youtubeFallback(prepared,controller.signal,setPhase);
+            if(!prepared.videoID)prepared.videoID=await select(prepared);
+            if(!prepared.videoID){await update(i,{status:controller.signal.aborted?'En pause':'Ignoré'});return;}
+            if(controller.signal.aborted)throw Error('Annulé');
+            if(await skipExisting(i,prepared))return;
+            await update(i,{videoID:prepared.videoID});
+            jobID+='-youtube';await update(i,{jobID});current.jobs.add(jobID);
+            downloaded=await downloadPrepared(prepared,jobID,{allowYoutubeThumbnail});
           }
-          if (controller.signal.aborted) throw new Error('Annulé');
-          current.saving = true;
-          setPhase('Ajout à la bibliothèque…');
-          const result = await save.current(downloaded);
-          downloaded = null;
-          current.saving = false;
-          updateRow(i, { title: result.song.title, status: result.duplicate ? 'Déjà dans la bibliothèque' : 'Ajouté ✓' });
-          if (result.duplicate) skipped++; else completed++;
-          if (!result.duplicate && lyricsTask) {
-            setPhase('Son ajouté · fin de la recherche des paroles…');
-            const lyrics = await lyricsTask;
-            if (!controller.signal.aborted) {
-              current.saving = true;
-              try {
-                const status = await attach.current(result.song.id, lyrics);
-                updateRow(i, {detail: status});
-              } catch {
-                updateRow(i, {detail: 'Son ajouté · enregistrement des paroles impossible. Réessaie depuis Paroles.'});
-              }
+          current.jobs.delete(jobID);
+          if(controller.signal.aborted)throw Error('Annulé');
+          // One normalization + durable library write at a time, including lyrics.
+          await current.gate.wait(controller.signal);
+          const result=await commit(async()=>{
+            if(controller.signal.aborted)throw Error('Annulé');
+            const result=await save.current(downloaded);
+            downloaded=null;
+            return result;
+          });
+          await update(i,{title:result.song.title,status:result.duplicate?'Déjà dans la bibliothèque':'Ajouté ✓',detail:''});
+          if(!result.duplicate && lyricsTask) {
+            const lyrics=await lyricsTask;
+            if(!controller.signal.aborted) {
+              const detail=await commit(()=>attach.current(result.song.id,lyrics));
+              await update(i,{detail});
             }
           }
-        } catch (e) {
-          updateRow(i, { status: controller.signal.aborted ? 'Annulé' : 'Échec', detail: controller.signal.aborted ? '' : readableImportError(e) });
+        } catch(e) {
+          // An optional lyric/journal error must not relabel an already committed song.
+          if(!['Ajouté ✓','Déjà dans la bibliothèque'].includes(journal.rows[i].status)) {
+            await update(i,{status:controller.signal.aborted?'En pause':'Échec',detail:controller.signal.aborted?'':readableImportError(e)});
+          }
         } finally {
-          lyricsController.abort();
-          controller.signal.removeEventListener('abort', stopLyrics);
-          current.saving = false;
-          if (downloaded?.uri) await FileSystem.deleteAsync(downloaded.uri, { idempotent: true }).catch(() => {});
+          current.jobs.delete(jobID);
+          lyricsController.abort();controller.signal.removeEventListener('abort',stop);
+          if(downloaded?.uri)await FileSystem.deleteAsync(downloaded.uri,{idempotent:true}).catch(()=>{});
         }
-      }
-    } catch (e) {
-      if (!controller.signal.aborted) {
-        setError(readableImportError(e));
-        setRows(currentRows => currentRows.map(row => row.status === 'En attente' ? { ...row, status: 'Échec', detail: readableImportError(e) } : row));
-      }
-    } finally {
-      if (controller.signal.aborted) setRows(currentRows => currentRows.map(row => row.status === 'En attente' ? { ...row, status: 'Annulé' } : row));
-      operation.current = null;
-      setBusy(false);
-      setChoice(null);
-      setFraction(null);
-      setPhase(`${completed} ajouté(s) · ${skipped} déjà présent(s) ignoré(s).`);
+      },controller.signal);
+    } catch(e) { setError(readableImportError(e)); }
+    finally {
+      try {await persist();} catch(e) {setError('Impossible de mémoriser la file : '+readableImportError(e));}
+      setResume(pendingImportRows(journal.rows).length ? journal : null);
+      await endBackgroundImport(!controller.signal.aborted && !pendingImportRows(journal.rows).length).catch(()=>{});
+      operation.current=null;finishCache();setBusy(false);setChoice(null);setFraction(null);
+      const added=journal.rows.filter(r=>r.status==='Ajouté ✓').length;
+      const skipped=journal.rows.filter(r=>/Déjà/.test(r.status)).length;
+      setPhase(`${added} ajouté(s) · ${skipped} déjà présent(s) ignoré(s).`);
     }
   };
 
@@ -178,9 +220,11 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           <Text style={[styles.link, busy && styles.disabled]}>Fermer</Text>
         </Pressable>
       </View>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
+      <FlatList data={rows} keyExtractor={(row,i)=>`${i}-${row.url}`} initialNumToRender={8} windowSize={5} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}
+        renderItem={({item:row})=><View style={styles.card}><Text style={styles.title} numberOfLines={2}>{row.title || row.url}</Text><Text style={row.status === 'Échec' ? styles.error : styles.link}>{row.status}</Text>{!!row.detail && <Text style={styles.hint}>{row.detail}</Text>}</View>}
+        ListHeaderComponent={<View style={{gap:14}}>
         <Text style={styles.hint}>YouTube · SoundCloud · Spotify</Text>
-        <Text style={styles.hint}>Colle des liens de morceaux, de playlists publiques ou de Likes SoundCloud séparés par des ;. Garde Peak Music ouvert pendant l’import.</Text>
+        <Text style={styles.hint}>Colle des liens de morceaux, de playlists publiques ou de Likes SoundCloud séparés par des ;. Lance l’import ici, puis tu peux verrouiller l’écran. La poursuite complète dépend du temps accordé par iOS ; la file est conservée en cas d’interruption.</Text>
         <TextInput value={input} onChangeText={setInput} editable={!busy} multiline autoCapitalize="none" autoCorrect={false}
           keyboardType="url" placeholder="https://… ; https://…" placeholderTextColor="#8e88a9" style={styles.input}
           accessibilityLabel="Liens des morceaux" />
@@ -190,9 +234,12 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           <Text style={[styles.hint,{flex:1}]}>Utiliser la miniature YouTube si aucune pochette n’est disponible</Text>
           <Switch value={allowYoutubeThumbnail} onValueChange={setAllowYoutubeThumbnail} disabled={busy} accessibilityLabel="Utiliser les miniatures YouTube en remplacement" />
         </View>
+        <View style={{flexDirection:'row',alignItems:'center',gap:12}}><Text style={[styles.hint,{flex:1}]}>Deux téléchargements simultanés</Text><Switch value={parallel} onValueChange={setParallel} disabled={busy}/></View>
+        {!busy && resume && <View style={styles.card}><Text style={styles.hint}>{pendingImportRows(resume.rows).length} morceau(x) à reprendre. Les morceaux terminés sont conservés.</Text><Pressable onPress={()=>start(resume)} style={styles.button}><Text style={styles.link}>Reprendre l’import précédent</Text></Pressable><Pressable onPress={async()=>{try{await writeImportJournal({rows:[],expanded:true});setResume(null);}catch(e){setError(e.message);}}} style={styles.button}><Text style={styles.link}>Oublier la file précédente</Text></Pressable></View>}
+        {!!backgroundMode && <Text style={styles.small}>{backgroundMode}</Text>}
         {!!error && <Text style={styles.error}>{error}</Text>}
-        <Pressable onPress={busy ? cancel : start} accessibilityRole="button" style={styles.primary}>
-          <Text style={styles.primaryText}>{busy ? 'Annuler l’import' : 'Télécharger'}</Text>
+        <Pressable disabled={!ready || !available || (!busy && !!resume)} onPress={busy ? cancel : () => start()} accessibilityRole="button" style={styles.primary}>
+          <Text style={styles.primaryText}>{busy ? 'Mettre en pause' : resume ? 'Reprends ou oublie la file précédente' : 'Télécharger'}</Text>
         </Pressable>
         {!!phase && <View style={styles.progress}>
           {busy && <ActivityIndicator color="#a995ff" />}
@@ -208,12 +255,8 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           </Pressable>)}
           <Pressable onPress={() => choose.current?.(null)} style={styles.button}><Text style={styles.link}>Ignorer ce morceau</Text></Pressable>
         </View>}
-        {rows.map((row, i) => <View key={`${i}-${row.url}`} style={styles.card}>
-          <Text style={styles.title} numberOfLines={2}>{row.title || row.url}</Text>
-          <Text style={row.status === 'Échec' ? styles.error : styles.link}>{row.status}</Text>
-          {!!row.detail && <Text style={styles.hint}>{row.detail}</Text>}
-        </View>)}
-      </ScrollView>
+        </View>}
+      />
     </SafeAreaView>
   </Modal>;
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useCallback,useRef} from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -21,7 +21,16 @@ export default function SongRow({
     playSong
   } = useMusic();
 
-  const active = currentSong?.id === song.id;
+  const handlers = useRef({onMore,onLongPress,playSong});
+  handlers.current={onMore,onLongPress,playSong};
+  const more=useCallback(()=>handlers.current.onMore?.(),[]);
+  const longPress=useCallback(()=>handlers.current.onLongPress?.(),[]);
+  const play=useCallback((...args)=>handlers.current.playSong(...args),[]);
+  return <SongRowContent song={song} queueSongs={queueSongs} queueName={queueName} onMore={onMore ? more : null} onLongPress={onLongPress ? longPress : null}
+    active={currentSong?.id === song.id} playing={currentSong?.id === song.id && isPlaying} playSong={play}/>;
+}
+const SongRowContent = React.memo(function SongRowContent({song,queueSongs,queueName,onMore,onLongPress,active,playing,playSong}) {
+
 
   return (
     <Pressable
@@ -48,7 +57,7 @@ export default function SongRow({
         </Text>
       </View>
 
-      {active && isPlaying && (
+      {active && playing && (
         <Text style={styles.indicator}>≋</Text>
       )}
 
@@ -68,7 +77,7 @@ export default function SongRow({
       )}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

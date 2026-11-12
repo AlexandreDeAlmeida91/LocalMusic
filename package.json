@@ -1,6 +1,6 @@
 {
   "name": "local-music-expo-v1",
-  "version": "1.8.14",
+  "version": "1.8.15",
   "private": true,
   "main": "index.js",
   "scripts": {

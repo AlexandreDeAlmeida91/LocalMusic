@@ -1,3 +1,5 @@
+import usePreference from './src/hooks/usePreference';
+import StorageModal from './src/components/StorageModal';
 import { sortSongs } from './src/services/songSort';
 import React, { useMemo, useState } from 'react';
 import {
@@ -162,6 +164,7 @@ function ManageSongsModal({ visible, playlist, songs, onClose, onSave }) {
         </View>
 
         <FlatList
+          initialNumToRender={10} maxToRenderPerBatch={8} windowSize={5}
           data={songs}
           keyExtractor={(item) => item.id}
           ListEmptyComponent={
@@ -233,8 +236,9 @@ function LibraryScreen() {
     clearPlaylistCover
   } = useMusic();
 
+  const [storageVisible, setStorageVisible] = useState(false);
   const [tab, setTab] = useState('songs');
-  const [songOrder, setSongOrder] = useState('title');
+  const [songOrder, setSongOrder] = usePreference('songOrder', 'title');
   const sortedSongs = useMemo(() => sortSongs(songs, songOrder), [songs, songOrder]);
   const songOrderLabels = {title:'Titre A–Z', newest:'Plus récents', oldest:'Plus anciens'};
   const chooseSongOrder = () => Alert.alert('Trier les morceaux', 'Date d’ajout dans Peak Music', [
@@ -267,9 +271,7 @@ function LibraryScreen() {
     (playlist) => playlist.id === selectedPlaylistId
   );
 
-  const selectedPlaylistSongs = selectedPlaylist
-    ? songsForPlaylist(selectedPlaylist)
-    : [];
+  const selectedPlaylistSongs = useMemo(() => selectedPlaylist ? songsForPlaylist(selectedPlaylist) : [], [selectedPlaylist, songs, songsForPlaylist]);
 
   React.useEffect(() => {
     if (selectedPlaylistId && !selectedPlaylist) {
@@ -515,6 +517,7 @@ function LibraryScreen() {
         </View>
       ) : (
         <FlatList
+          initialNumToRender={10} maxToRenderPerBatch={8} windowSize={5}
           data={selectedPlaylistSongs}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
@@ -557,6 +560,7 @@ function LibraryScreen() {
 
       <SegmentedControl value={tab} onChange={setTab} />
       <PlaybackModeBar />
+      <Pressable onPress={() => setStorageVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Stockage et cache</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Trier les morceaux" onPress={chooseSongOrder} style={{alignSelf:'flex-end',padding:12,marginHorizontal:16,minHeight:44}}><Text style={{color:'#b6a4ff',fontWeight:'700',fontSize:15}}>Trier : {songOrderLabels[songOrder]} ▾</Text></Pressable>
       <View style={styles.searchBar}>
         <TextInput
@@ -604,6 +608,7 @@ function LibraryScreen() {
         </View>
       ) : (
         <FlatList
+          initialNumToRender={10} maxToRenderPerBatch={8} windowSize={5}
           data={filteredSongs}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -662,6 +667,7 @@ function LibraryScreen() {
         </View>
       ) : (
         <FlatList
+          initialNumToRender={10} maxToRenderPerBatch={8} windowSize={5}
           data={playlists}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.playlistList}
@@ -715,10 +721,11 @@ function LibraryScreen() {
         </View>
       )}
 
+      <StorageModal visible={storageVisible} onClose={() => setStorageVisible(false)} />
       <MiniPlayer />
       <PlayerModal />
       <LyricsEditorModal song={lyricsEditorSong} onClose={() => setLyricsEditorSong(null)} onSave={saveChosenLyrics} onImport={addOrReplaceLyrics} />
-      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} onImported={acceptDownloadedSong} onFindExisting={findImportedSong} onLyrics={attachOnlineLyrics} />
+      <LinkImportModal visible={linkImportVisible} onClose={() => setLinkImportVisible(false)} available={!loadingLibrary && !importing} onImported={acceptDownloadedSong} onFindExisting={findImportedSong} onLyrics={attachOnlineLyrics} />
 
       <CreatePlaylistModal
         visible={createVisible}

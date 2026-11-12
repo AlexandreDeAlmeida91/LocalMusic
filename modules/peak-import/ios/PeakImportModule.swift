@@ -1,6 +1,8 @@
 import ExpoModulesCore
 import Foundation
 import AVFoundation
+import ImageIO
+import CryptoKit
 
 private struct ImportFailure: LocalizedError {
   let message: String
@@ -17,7 +19,7 @@ private actor ImportJobs {
   var cancelled = Set<String>()
   func run(_ id: String, work: @escaping () async throws -> [String: String]) async throws -> [String: String] {
     if cancelled.remove(id) != nil { throw CancellationError() }
-    guard tasks.isEmpty else { throw ImportFailure(message: "Un import est déjà en cours.") }
+    guard tasks.count < 2, tasks[id] == nil else { throw ImportFailure(message: "Un import est déjà en cours.") }
     let task = Task { try await work() }
     tasks[id] = task
     defer { tasks.removeValue(forKey: id) }
@@ -30,6 +32,7 @@ private actor ImportJobs {
       cancelled.insert(id)
     }
   }
+  func cancelAll() { for task in tasks.values { task.cancel() } }
 }
 
 public class PeakImportModule: Module {
@@ -37,7 +40,26 @@ public class PeakImportModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("PeakImport")
-    Events("onProgress")
+    Events("onProgress", "onBackgroundImportState")
+
+    AsyncFunction("beginBackgroundImport") { () async -> String in
+      await MainActor.run {
+        PeakBackgroundRuntime.shared.notify = { [weak self] state in
+          self?.sendEvent("onBackgroundImportState", ["state": state])
+          if state == "expired", let self { Task { await self.jobs.cancelAll() } }
+        }
+        return PeakBackgroundRuntime.shared.begin()
+      }
+    }
+    AsyncFunction("updateBackgroundImport") { (done: Int, total: Int) async in
+      await MainActor.run { PeakBackgroundRuntime.shared.update(done: done, count: total) }
+    }
+    AsyncFunction("clearBackgroundDownloads") { () async throws in
+      try await BackgroundAudioTransfer.shared.clearCompleted()
+    }
+    AsyncFunction("endBackgroundImport") { (success: Bool) async in
+      await MainActor.run { PeakBackgroundRuntime.shared.finish(success: success) }
+    }
 
     AsyncFunction("youtube") { (videoID: String, jobID: String) async throws -> [String: String] in
       try await self.jobs.run(jobID) {
@@ -91,6 +113,35 @@ public class PeakImportModule: Module {
       }
     }
 
+    AsyncFunction("thumbnail") { (source: String) async throws -> String in
+      guard let url = URL(string: source), url.isFileURL,
+            url.standardizedFileURL.path.hasPrefix(NSHomeDirectory() + "/") else {
+        throw ImportFailure(message: "Pochette locale requise.")
+      }
+      let fm = FileManager.default
+      let attributes = try fm.attributesOfItem(atPath: url.path)
+      let signature = source + String(describing: attributes[.modificationDate]) + String(describing: attributes[.size])
+      let name = SHA256.hash(data: Data(signature.utf8)).map { String(format: "%02x", $0) }.joined()
+      let root = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("PeakCache/Thumbnails", isDirectory: true)
+      try fm.createDirectory(at: root, withIntermediateDirectories: true)
+      let destination = root.appendingPathComponent(name + ".jpg")
+      if fm.fileExists(atPath: destination.path) { return destination.absoluteString }
+      guard let input = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+            let image = CGImageSourceCreateThumbnailAtIndex(input, 0, [
+              kCGImageSourceCreateThumbnailFromImageAlways: true,
+              kCGImageSourceCreateThumbnailWithTransform: true,
+              kCGImageSourceThumbnailMaxPixelSize: 192
+            ] as CFDictionary) else { throw ImportFailure(message: "Pochette illisible.") }
+      let data = NSMutableData()
+      guard let writer = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else {
+        throw ImportFailure(message: "Miniature indisponible.")
+      }
+      CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+      guard CGImageDestinationFinalize(writer) else { throw ImportFailure(message: "Miniature incomplète.") }
+      try (data as Data).write(to: destination, options: .atomic)
+      return destination.absoluteString
+    }
+
     AsyncFunction("normalizeM4a") { (source: String, destination: String) async throws -> [String: String] in
       try await M4ANormalizer.normalize(source: source, destination: destination)
     }
@@ -104,7 +155,7 @@ public class PeakImportModule: Module {
     sendEvent("onProgress", event)
   }
 
-  fileprivate static func allowed(_ url: URL) -> Bool {
+  static func allowed(_ url: URL) -> Bool {
     guard url.scheme == "https", url.user == nil, url.password == nil,
           url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
     return ["googlevideo.com", "youtube.com", "sndcdn.com", "soundcloud.com", "playback.media-streaming.soundcloud.cloud"].contains {
@@ -117,10 +168,7 @@ public class PeakImportModule: Module {
     let fm = FileManager.default
     let root = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("PeakImports", isDirectory: true)
     try fm.createDirectory(at: root, withIntermediateDirectories: true)
-    // Only one native import at a time. Clean remnants of interrupted old imports.
-    for file in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
-      try? fm.removeItem(at: file)
-    }
+    // Cache remnants are cleaned once at startup; never erase another live job.
     let output = root.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
     var success = false
     defer { if !success { try? fm.removeItem(at: output) } }
@@ -169,7 +217,9 @@ public class PeakImportModule: Module {
       }
       try writer.synchronize()
     } else {
-      let (temporary, response) = try await session.download(from: url)
+      var request = URLRequest(url: url)
+      headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+      let (temporary, response) = try await BackgroundAudioTransfer.shared.transfer(request, jobID: jobID)
       defer { try? fm.removeItem(at: temporary) }
       try Self.check(response)
       let size = (try fm.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.intValue ?? 0

@@ -1,6 +1,8 @@
+import usePreference from '../hooks/usePreference';
+import {cleanupStartup} from '../services/cacheStorage';
 import {validTiming} from '../services/lyricsTiming';
 import * as FileSystem from 'expo-file-system/legacy';
-import { findOnlineLyrics } from '../services/onlineLyrics';
+import { findOnlineLyrics } from '../services/cachedLyrics';
 import { ensureDirectories, LYRICS_DIR } from '../services/storage';
 import { findExistingImport } from '../services/importDedup';
 import React, {
@@ -59,8 +61,8 @@ export function MusicProvider({ children }) {
   const [importing, setImporting] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
   const [activeQueueName, setActiveQueueName] = useState('Bibliothèque');
-  const [shuffleEnabled, setShuffleEnabled] = useState(false);
-  const [repeatMode, setRepeatModeState] = useState('off');
+  const [shuffleEnabled, setShuffleEnabled] = usePreference('shuffleEnabled', false);
+  const [repeatMode, setRepeatModeState] = usePreference('repeatMode', 'off');
   const [playerVisible, setPlayerVisible] = useState(false);
   const [volume, setVolumeState] = useState(1);
   const [error, setError] = useState(null);
@@ -84,6 +86,7 @@ export function MusicProvider({ children }) {
   useEffect(() => {
     (async () => {
       try {
+        await cleanupStartup();
         await ensurePlayer();
         setPlayerReady(true);
 
@@ -385,7 +388,7 @@ export function MusicProvider({ children }) {
     if (lyricsJobs.current.has(song.id)) return;
     lyricsJobs.current.add(song.id);
     try {
-      const result = await findOnlineLyrics(song);
+      const result = await findOnlineLyrics(song, undefined, true);
       const status = await attachOnlineLyrics(song.id, result);
       setError(status);
     } finally { lyricsJobs.current.delete(song.id); }
@@ -821,14 +824,15 @@ export function MusicProvider({ children }) {
     [playlists]
   );
 
+  const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);
   const songsForPlaylist = useCallback(
     (playlist) =>
       (playlist?.songIds || [])
         .map((id) =>
-          songs.find((song) => song.id === id)
+          songsById.get(id)
         )
         .filter(Boolean),
-    [songs]
+    [songsById]
   );
 
   const value = {

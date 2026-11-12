@@ -333,3 +333,14 @@ export async function youtubeFallback(prepared, signal, status) {
   if (!ranked.length) throw new Error('Aucune autre version YouTube trouvée.');
   return { ...prepared, mediaURL: undefined, candidates: ranked.slice(0, 8), videoID: automaticCandidate(ranked)?.id || null, matchReason: 'La source initiale est indisponible. Choisis une version YouTube.' };
 }
+
+// iOS 26 continued processing is optional; direct background transfers work on
+// older iOS too, but JS preparation waits for the foreground without a grant.
+export async function beginBackgroundImport() {
+  return typeof engine?.beginBackgroundImport === 'function' ? engine.beginBackgroundImport() : 'transfers';
+}
+export async function updateBackgroundImport(done,total) { await engine?.updateBackgroundImport?.(done,total); }
+export async function endBackgroundImport(success) { await engine?.endBackgroundImport?.(success); }
+export function subscribeBackgroundImport(listener) {
+  return engine?.addListener?.('onBackgroundImportState',listener);
+}
