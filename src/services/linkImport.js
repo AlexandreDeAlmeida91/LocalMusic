@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
-  normalized, parseMusicLink, spotifyMetadata, youtubeCandidates, rankCandidates,
+  importArtworkCandidates, normalized, parseMusicLink, spotifyMetadata, youtubeCandidates, rankCandidates,
   automaticCandidate, soundcloudTrack, soundcloudFormats, embeddedJSON, validateSoundcloudTrack, readableImportError
 } from './linkParsing';
 
@@ -136,7 +136,7 @@ export async function prepareMusicLink(raw, signal, status) {
     validateSoundcloudTrack(JSON.parse(await requestText(
       `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(link.url)}&client_id=${await clientID(html, signal)}`, signal)));
   const formats = soundcloudFormats(track);
-  const metadata = { title: track.title, artist: track.user?.username || 'SoundCloud', duration: track.duration / 1000 };
+  const metadata = { title: track.title, artist: track.user?.username || 'SoundCloud', duration: track.duration / 1000, artworkUrl: track.artwork_url || null };
   if (!formats.length) {
     const explanation = 'Ce morceau SoundCloud ne propose pas de flux complet compatible. Tu peux choisir une version YouTube à la place.';
     let ranked;
@@ -168,7 +168,7 @@ export async function prepareMusicLink(raw, signal, status) {
   return youtubeFallback({ ...link, sourceKey: `soundcloud:${track.id}`, metadata }, signal, status);
 }
 
-export async function downloadPrepared(prepared, jobID) {
+export async function downloadPrepared(prepared, jobID, options = {}) {
   assertImportEngine();
   const result = prepared.videoID ? await engine.youtube(prepared.videoID, jobID) : await engine.media(prepared.mediaURL, prepared.mode, jobID);
   const duration = Number(result.duration);
@@ -179,6 +179,7 @@ export async function downloadPrepared(prepared, jobID) {
   }
   return {
     ...result, duration,
+    artworkCandidates: importArtworkCandidates(prepared, options.allowYoutubeThumbnail),
     title: prepared.metadata?.title || result.title || 'Morceau',
     artist: prepared.metadata?.artist || 'YouTube',
     sourceKey: prepared.sourceKey, sourceUrl: prepared.url,

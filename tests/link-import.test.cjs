@@ -99,10 +99,11 @@ test('current SoundCloud AAC streams and MONETIZE tracks are accepted without ac
   assert.throws(() => p.validateSoundcloudTrack({ ...track, policy: 'SNIP' }));
 });
 
-function libraryMock({ failSave = false, repair = false } = {}) {
+function libraryMock({ failSave = false, repair = false, artwork = false } = {}) {
   const files = new Map([['file:///cache/PeakImports/new.m4a', 'audio bytes']]);
   let stored = null;
   const f = {
+    ...(artwork ? {createDownloadResumable: (url, uri) => ({cancelAsync: async()=>{}, downloadAsync: async()=>{files.set(uri, 'image bytes'); return {status:200,headers:{'Content-Type':'image/jpeg'}};}})} : {}),
     cacheDirectory: 'file:///cache/',
     getInfoAsync: async uri => ({ exists: files.has(uri), size: files.get(uri)?.length || 0 }),
     moveAsync: async ({ from, to }) => { if (!files.has(from)) throw new Error('Missing'); files.set(to, files.get(from)); files.delete(from); },
@@ -442,4 +443,40 @@ test('YouTube empty retry is bounded and explains that a direct link may work', 
   const service = soundcloudService(async url => { count++; return response(url, searchHTML([])); });
   await assert.rejects(service.youtubeFallback({ metadata: { title: 'Song', artist: 'Artist' } }, undefined, () => {}), /deux recherches.*lien YouTube direct/);
   assert.equal(count, 2);
+});
+
+test('original platform artwork takes priority; YouTube requires explicit opt-in', () => {
+ const prepared={provider:'spotify',videoID:id,metadata:{artworkUrl:'https://i.scdn.co/image/album'}};
+ assert.deepEqual(p.importArtworkCandidates(prepared).map(c=>c.source),['spotify']);
+ assert.deepEqual(p.importArtworkCandidates(prepared,true).map(c=>c.source),['spotify','youtube']);
+ assert.deepEqual(p.importArtworkCandidates({provider:'youtube',videoID:id}),[]);
+ assert.equal(p.importArtworkCandidates({provider:'youtube',videoID:id},true)[0].source,'youtube');
+ assert.deepEqual(p.importArtworkCandidates({...prepared,metadata:{artworkUrl:'https://i.scdn.co.evil.test/a'}}),[]);
+});
+test('Spotify cover is selected from the largest image of the exact track', () => {
+ const html=spotifyHTML.replace('"audioPreview":', '"visualIdentity":{"image":[{"url":"https://i.scdn.co/image/small","width":64},{"url":"https://i.scdn.co/image/large","width":640}]},"audioPreview":');
+ assert.equal(p.spotifyMetadata(html,spotifyID).artworkUrl,'https://i.scdn.co/image/large');
+});
+test('SoundCloud offers larger track cover before original, without artist avatar', () => {
+ const candidates=p.importArtworkCandidates({provider:'soundcloud',metadata:{artworkUrl:'https://i1.sndcdn.com/artworks-test-large.jpg'},videoID:id},true);
+ assert.match(candidates[0].url, /t500x500/);
+ assert.match(candidates[1].url, /large/);
+ assert.equal(candidates[2].source,'youtube');
+});
+test('downloaded cover is stored locally and rolls back with failed library commit', async () => {
+ const d={...download,artworkCandidates:[{url:'https://i.scdn.co/image/a',source:'spotify'}]};
+ const m=libraryMock({artwork:true});
+ const result=await m.library.commitDownloadedSong(d,[]);
+ assert.match(result.song.artworkPath,/^Artwork\/.*-online.jpg$/);
+ assert.equal(m.files.get(result.song.artworkUri),'image bytes');
+ assert.equal(result.song.artworkSource,'spotify');
+ const fail=libraryMock({artwork:true,failSave:true});
+ await assert.rejects(fail.library.commitDownloadedSong(d,[]),/Disk full/);
+ assert.equal(fail.files.size,0);
+});
+test('missing artwork never fails audio import', async () => {
+ const m=libraryMock();
+ const result=await m.library.commitDownloadedSong({...download,artworkCandidates:[{url:'https://i.scdn.co/image/missing',source:'spotify'}]},[]);
+ assert.equal(result.song.artworkUri,null);
+ assert.equal(m.files.get(result.song.uri),'audio bytes');
 });

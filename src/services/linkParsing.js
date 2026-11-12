@@ -65,7 +65,9 @@ export function spotifyMetadata(html, expectedID) {
   if (entity?.type !== 'track' || entity.id !== expectedID || !entity.name || !artist) {
     throw new Error('Spotify ne fournit pas le titre et l’artiste de ce morceau. Réessaie avec son lien YouTube.');
   }
-  return { title: entity.name, artist, artists: entity.artists.map(a => a.name), duration: Number(entity.duration) / 1000 || null };
+  const images = [entity.visualIdentity?.image, entity.album?.images].filter(Array.isArray).flat();
+  const artworkUrl = images.filter(i => typeof i?.url === 'string').sort((a,b) => (b.width || b.maxWidth || 0) - (a.width || a.maxWidth || 0))[0]?.url;
+  return { ...(artworkUrl ? {artworkUrl} : {}), title: entity.name, artist, artists: entity.artists.map(a => a.name), duration: Number(entity.duration) / 1000 || null };
 }
 
 function text(value) { return value?.simpleText || value?.runs?.map(r => r.text).join('') || ''; }
@@ -144,4 +146,27 @@ export function readableImportError(error) {
     .replace(/^(?:UnexpectedException|Exception|Error):\s*/i, '')
     .replace(/\s*\(at\s+ExpoModulesCore\/[\s\S]*?\)\s*$/, '')
     .trim();
+}
+
+// Keep the original platform cover even when the audio comes from YouTube.
+export function importArtworkCandidates(prepared, allowYoutubeThumbnail = false) {
+  const result = [];
+  const raw = prepared.metadata?.artworkUrl;
+  const domains = prepared.provider === 'spotify' ? ['scdn.co'] : prepared.provider === 'soundcloud' ? ['sndcdn.com'] : [];
+  try {
+    const url = new URL(raw);
+    if (url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+        domains.some(d => url.hostname === d || url.hostname.endsWith('.' + d))) {
+      if (prepared.provider === 'soundcloud' && /-large\.(jpg|png)$/.test(url.pathname)) {
+        const larger = new URL(url.href);
+        larger.pathname = larger.pathname.replace(/-large\.(jpg|png)$/, '-t500x500.$1');
+        result.push({url: larger.href, source: prepared.provider});
+      }
+      result.push({url: url.href, source: prepared.provider});
+    }
+  } catch { /* Missing cover is allowed. */ }
+  if (allowYoutubeThumbnail && /^[a-zA-Z0-9_-]{11}$/.test(prepared.videoID || '')) {
+    result.push({url: `https://i.ytimg.com/vi/${prepared.videoID}/hqdefault.jpg`, source: 'youtube'});
+  }
+  return result;
 }

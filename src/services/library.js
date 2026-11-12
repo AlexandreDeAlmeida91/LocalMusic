@@ -579,11 +579,21 @@ export async function commitDownloadedSong(download, songs) {
       if (duplicate[key] != null) song[key] = duplicate[key];
     }
   }
+  let importedArtwork = null;
+  if (!song.artworkUri && !song.customArtworkPath) {
+    importedArtwork = await downloadSongArtwork(download.artworkCandidates, id);
+    if (importedArtwork) {
+      song.artworkPath = importedArtwork.path;
+      song.artworkUri = resolveLocalPath(importedArtwork.path);
+      song.artworkSource = importedArtwork.source;
+    }
+  }
   const merged = [...songs.filter(item => item.id !== duplicate?.id), song].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
   try {
     await FileSystem.moveAsync({ from: download.uri, to: uri });
     await saveLibrary(merged);
   } catch (error) {
+    if (importedArtwork) await FileSystem.deleteAsync(resolveLocalPath(importedArtwork.path), { idempotent: true }).catch(() => {});
     await FileSystem.deleteAsync(uri, { idempotent: true });
     if (song.uri !== uri) await FileSystem.deleteAsync(song.uri, { idempotent: true });
     throw error;
@@ -611,4 +621,42 @@ export async function repairStoredSong(song, currentSongsOrGetter) {
   try { await saveLibrary(songs); }
   catch (error) { await FileSystem.deleteAsync(result.uri, { idempotent: true }); throw error; }
   return { changed: true, songs, song: updated };
+}
+
+// Artwork is optional: an unavailable image must never fail an audio import.
+export async function downloadSongArtwork(candidates, id) {
+  const domains = {spotify: ['scdn.co'], soundcloud: ['sndcdn.com'], youtube: ['ytimg.com']};
+  for (const candidate of (Array.isArray(candidates) ? candidates : []).slice(0, 3)) {
+    let url;
+    try {
+      url = new URL(candidate.url);
+      if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+          !domains[candidate.source]?.some(d => url.hostname === d || url.hostname.endsWith('.' + d))) continue;
+    } catch { continue; }
+    const base = `Artwork/${String(id).replace(/[^a-zA-Z0-9_-]/g,'_')}-online`;
+    const temporary = resolveLocalPath(base + '.tmp');
+    let task, timer, cancelled = false;
+    try {
+      const cancel = () => { cancelled = true; task?.cancelAsync().catch(() => {}); };
+      task = FileSystem.createDownloadResumable(url.href, temporary, {}, progress => {
+        if (progress.totalBytesWritten > 8_000_000 || progress.totalBytesExpectedToWrite > 8_000_000) cancel();
+      });
+      timer = setTimeout(cancel, 12000);
+      const result = await task.downloadAsync();
+      clearTimeout(timer);
+      const headers = Object.fromEntries(Object.entries(result?.headers || {}).map(([k,v]) => [k.toLowerCase(),v]));
+      const type = String(headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const extension = {'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[type];
+      const info = await FileSystem.getInfoAsync(temporary);
+      if (cancelled || result?.status !== 200 || !extension || !info.exists || !info.size || info.size > 8_000_000) throw new Error('Invalid artwork');
+      const path = base + '.' + extension;
+      await FileSystem.moveAsync({from: temporary, to: resolveLocalPath(path)});
+      return {path, source: candidate.source};
+    } catch { /* Try the explicitly allowed fallback, then keep the placeholder. */ }
+    finally {
+      clearTimeout(timer);
+      await FileSystem.deleteAsync(temporary, {idempotent:true}).catch(() => {});
+    }
+  }
+  return null;
 }

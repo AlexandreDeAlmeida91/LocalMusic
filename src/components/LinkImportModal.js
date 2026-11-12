@@ -1,11 +1,12 @@
 import { findOnlineLyrics } from '../services/onlineLyrics';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, Switch } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { youtubeFallback, expandImportLinks, assertImportEngine, prepareMusicLink, downloadPrepared, cancelNativeImport, subscribeImportProgress } from '../services/linkImport';
 import { readableImportError } from '../services/linkParsing';
 
 export default function LinkImportModal({ visible, onClose, onImported, onFindExisting, onLyrics }) {
+  const [allowYoutubeThumbnail, setAllowYoutubeThumbnail] = useState(false);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState('');
@@ -107,7 +108,7 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           lyricsTask = findOnlineLyrics(prepared.metadata, lyricsController.signal).catch(() => ({status:'Paroles indisponibles'}));
           updateRow(i, { detail: 'Paroles : recherche en parallèle…', status: 'Téléchargement…', title: prepared.metadata?.title });
           try {
-            downloaded = await downloadPrepared(prepared, current.jobID);
+            downloaded = await downloadPrepared(prepared, current.jobID, {allowYoutubeThumbnail});
           } catch (directError) {
             if (controller.signal.aborted) throw directError;
             prepared = await youtubeFallback(prepared, controller.signal, setPhase);
@@ -122,7 +123,7 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
             if (await skipExisting(i, prepared)) continue;
             // A fresh job ID prevents cancellation bookkeeping from affecting retry.
             current.jobID += '-youtube';
-            downloaded = await downloadPrepared(prepared, current.jobID);
+            downloaded = await downloadPrepared(prepared, current.jobID, {allowYoutubeThumbnail});
           }
           if (controller.signal.aborted) throw new Error('Annulé');
           current.saving = true;
@@ -184,6 +185,11 @@ export default function LinkImportModal({ visible, onClose, onImported, onFindEx
           keyboardType="url" placeholder="https://… ; https://…" placeholderTextColor="#8e88a9" style={styles.input}
           accessibilityLabel="Liens des morceaux" />
         <Text style={styles.small}>Spotify et les morceaux SoundCloud incompatibles sont recherchés sur YouTube. Une correspondance claire est sélectionnée automatiquement. L’audio est conservé en M4A ou MP3 sur cet iPhone. Les paroles sont recherchées en parallèle et associées au morceau lorsqu’une correspondance est trouvée.</Text>
+        <Text style={styles.small}>La pochette Spotify ou SoundCloud est récupérée lorsqu’elle est disponible, même si l’audio vient de YouTube.</Text>
+        <View style={{flexDirection:'row',alignItems:'center',gap:12}}>
+          <Text style={[styles.hint,{flex:1}]}>Utiliser la miniature YouTube si aucune pochette n’est disponible</Text>
+          <Switch value={allowYoutubeThumbnail} onValueChange={setAllowYoutubeThumbnail} disabled={busy} accessibilityLabel="Utiliser les miniatures YouTube en remplacement" />
+        </View>
         {!!error && <Text style={styles.error}>{error}</Text>}
         <Pressable onPress={busy ? cancel : start} accessibilityRole="button" style={styles.primary}>
           <Text style={styles.primaryText}>{busy ? 'Annuler l’import' : 'Télécharger'}</Text>
