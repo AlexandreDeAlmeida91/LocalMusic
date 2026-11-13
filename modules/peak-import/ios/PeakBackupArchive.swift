@@ -101,13 +101,19 @@ enum PeakBackupArchive {
     var success=false
     defer {try? out.close(); if !success {try? fm.removeItem(at:url)}}
     try out.write(contentsOf:magic)
-    guard let entries=fm.enumerator(at:root,includingPropertiesForKeys:[.isRegularFileKey,.isSymbolicLinkKey,.fileSizeKey]) else {throw fail("Bibliothèque inaccessible.")}
-    for case let file as URL in entries {
+    // atPath returns names relative to this directory. Do not slice absolute
+    // URL strings: /var and /private/var may refer to the same Apple directory,
+    // and directory URL trailing separators are not stable across Foundation.
+    let source = root.resolvingSymlinksInPath().standardizedFileURL
+    guard let entries=fm.enumerator(atPath:source.path) else {throw fail("Bibliothèque inaccessible.")}
+    var written=Set<String>()
+    for case let name as String in entries {
+      let file=source.appendingPathComponent(name)
       let values=try file.resourceValues(forKeys:[.isRegularFileKey,.isSymbolicLinkKey,.fileSizeKey])
       guard values.isSymbolicLink != true else {throw fail("Lien symbolique non pris en charge.")}
       guard values.isRegularFile == true else {continue}
-      let name=String(file.path.dropFirst(root.path.count+1))
       guard safe(name) else {continue}
+      written.insert(name)
       let size=values.fileSize ?? 0
       let header=try JSONSerialization.data(withJSONObject:["path":name,"size":size],options:[.sortedKeys])
       guard header.count < 8192 else {throw fail("Nom de fichier trop long.")}
@@ -117,6 +123,9 @@ enum PeakBackupArchive {
       var left=size, hash=SHA256()
       while left>0 {let data=try exact(input,min(left,1024*1024));hash.update(data:data);try out.write(contentsOf:data);left-=data.count}
       try out.write(contentsOf:Data(hash.finalize()))
+    }
+    guard written.contains("library.json"), written.contains("playlists.json") else {
+      throw fail("Sauvegarde incomplète : les index de la bibliothèque n’ont pas été exportés.")
     }
     try out.write(contentsOf:Data("{\"end\":true}\n".utf8))
     try out.synchronize();success=true
