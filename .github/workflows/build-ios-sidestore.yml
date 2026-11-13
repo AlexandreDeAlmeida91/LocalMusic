@@ -28,6 +28,12 @@ jobs:
           xcrun swiftc -target "$(uname -m)-apple-macosx13.0" -parse-as-library modules/peak-import/ios/M4ANormalizer.swift tests/m4a-native.swift -o /tmp/peak-m4a-test
           /tmp/peak-m4a-test tests/fixtures/aac-fragmented.m4a
 
+      - name: Test backup integrity and restoration
+        run: |
+          export PEAK_TEST_ROOT="$(mktemp -d)"
+          xcrun swiftc -D PEAK_BACKUP_TESTS -parse-as-library modules/peak-import/ios/PeakBackupArchive.swift tests/backup-native.swift -o /tmp/peak-backup-test
+          /tmp/peak-backup-test
+
       - name: Install JavaScript dependencies
         run: npm install
 

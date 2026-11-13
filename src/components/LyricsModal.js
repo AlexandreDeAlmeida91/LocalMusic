@@ -1,5 +1,4 @@
 import GlowingLyricLine from './GlowingLyricLine';
-import AutoLyricsModal from './AutoLyricsModal';
 import {timedLines, validTiming, activeLyric} from '../services/lyricsTiming';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -26,14 +25,13 @@ export default function LyricsModal({
   song,
   onClose
 }) {
-  const {saveChosenLyrics, addOrReplaceLyrics, saveLyricsTiming, currentTime} = useMusic();
-  const [autoOpen,setAutoOpen] = useState(false);
+  const {saveChosenLyrics, addOrReplaceLyrics, currentTime} = useMusic();
   const scrollRef = useRef(null);
   const positions = useRef({});
   const blockY = useRef(0);
   const [follow,setFollow] = useState(true);
   const [editing,setEditing] = useState(false);
-  useEffect(() => {setAutoOpen(false);setEditing(false);setFollow(true);positions.current={};}, [visible, song?.id, song?.lyricsUri]);
+  useEffect(() => {setEditing(false);setFollow(true);positions.current={};}, [visible, song?.id, song?.lyricsUri]);
   const [lyrics, setLyrics] = useState('');
   const [loading, setLoading] = useState(false);
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
@@ -126,7 +124,6 @@ export default function LyricsModal({
         </View>
 
         {!!lyrics && <View style={{padding:12,gap:8}}>
-          <Pressable style={styles.syncButton} onPress={()=>setAutoOpen(true)}><Text style={styles.fontButtonText}>Essayer la synchronisation automatique locale</Text></Pressable>
           {timed && <Pressable onPress={()=>setFollow(v=>!v)}><Text style={styles.artist}>Défilement automatique : {follow?'activé':'désactivé'}</Text></Pressable>}
         </View>}
         <ScrollView
@@ -188,7 +185,6 @@ export default function LyricsModal({
           </Pressable>
           <View style={styles.bottomSpace} />
         </ScrollView>
-        {autoOpen && visible && <AutoLyricsModal song={song} text={lyrics} onClose={()=>setAutoOpen(false)} onSave={saveLyricsTiming} />}
         <LyricsEditorModal song={editing ? song : null} onClose={() => setEditing(false)} onSave={saveChosenLyrics} onImport={addOrReplaceLyrics} />
       </SafeAreaView>
     </Modal>

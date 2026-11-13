@@ -82,3 +82,8 @@ test('pause cancels a background wait without polling or resuming work',async()=
  const gate=gateModule.createBackgroundGate('background');const c=new AbortController();
  const pending=gate.wait(c.signal);c.abort();await assert.rejects(pending,/Annulé/);
 });
+
+test('backup exclusive guard blocks imports and cleanup then releases on failure',async()=>{
+ const cache=load('cacheStorage',{'expo':{requireOptionalNativeModule:()=>null},'expo-file-system/legacy':{cacheDirectory:'cache/'},'./storage':{ROOT_DIR:'doc/',ARTWORK_DIR:'doc/Artwork/'}});
+ const finish=cache.beginExclusiveStorageWork();assert.throws(()=>cache.beginCacheWork());await assert.rejects(cache.clearAppCache());finish();finish();const end=cache.beginCacheWork();assert.throws(()=>cache.beginExclusiveStorageWork());end();cache.beginExclusiveStorageWork()();
+});

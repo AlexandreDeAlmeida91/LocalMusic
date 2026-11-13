@@ -84,6 +84,7 @@ async function youtubeMatches(metadata, signal, status) {
   const base = [normalized(metadata.artist), normalized(metadata.title)].filter(Boolean).join(' ');
   if (!base) throw new Error('Titre et artiste manquants pour la recherche YouTube.');
   const queries = [...new Set([`${base} official audio`, base])];
+  const matches = new Map();
   let lastError;
   let readableResponse = false;
   for (let index = 0; index < queries.length; index++) {
@@ -93,12 +94,15 @@ async function youtubeMatches(metadata, signal, status) {
       const html = await requestText(`https://www.youtube.com/results?search_query=${encodeURIComponent(queries[index])}`, signal);
       const candidates = youtubeCandidates(html);
       readableResponse = true;
-      if (candidates.length) return rankCandidates(candidates, metadata);
+      for (const candidate of candidates) matches.set(candidate.id,candidate);
+      // Combine both searches so a clip cannot hide the audio-only result.
+      if (index === queries.length - 1 && matches.size) return rankCandidates([...matches.values()], metadata);
     } catch (error) {
       if (signal?.aborted) throw error;
       lastError = error;
     }
   }
+  if (matches.size) return rankCandidates([...matches.values()], metadata);
   if (!readableResponse && lastError) throw lastError;
   throw new Error('Aucun résultat YouTube exploitable après deux recherches. Essaie un lien YouTube direct vers le morceau.');
 }

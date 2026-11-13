@@ -2,7 +2,7 @@
   "expo": {
     "name": "Peak Music",
     "slug": "local-music",
-    "version": "1.8.15",
+    "version": "1.8.16",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "ios": {
@@ -16,7 +16,6 @@
         "CFBundleDisplayName": "Peak Music",
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
-        "NSSpeechRecognitionUsageDescription": "Peak Music analyse localement les fichiers audio pour proposer des repères de paroles. Aucun son n’est envoyé à un serveur.",
         "BGTaskSchedulerPermittedIdentifiers": [
           "com.alexandre.localmusic.playlist-import"
         ]

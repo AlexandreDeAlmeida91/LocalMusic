@@ -6,10 +6,16 @@ export const IMPORT_CACHE = `${FS.cacheDirectory}PeakImports/`;
 let active = 0;
 let cleaning = false;
 export function beginCacheWork() {
-  if (cleaning) throw new Error('Nettoyage en cours. Réessaie dans un instant.');
+  if (cleaning) throw new Error('Une sauvegarde, restauration ou un nettoyage est en cours.');
   active++;
   let ended = false;
   return () => { if (!ended) { ended = true; active--; } };
+}
+export function beginExclusiveStorageWork() {
+  if (active || cleaning) throw new Error('Attends la fin des imports et recherches avant la sauvegarde ou la restauration.');
+  cleaning=true;
+  let ended=false;
+  return ()=>{if(!ended){ended=true;cleaning=false;}};
 }
 // File URIs must not have an extra slash: directories are inspected first.
 async function bytes(uri) {
@@ -38,6 +44,7 @@ export async function clearAppCache() {
 let startup;
 export function cleanupStartup() {
   return startup ||= (async () => {
+    await requireOptionalNativeModule('PeakBackup')?.recoverRestore?.();
     // Called before imports become available, once per process. Never delete Music.
     await FS.deleteAsync(IMPORT_CACHE, {idempotent:true}).catch(() => {});
     const info = await FS.getInfoAsync(ARTWORK_DIR);

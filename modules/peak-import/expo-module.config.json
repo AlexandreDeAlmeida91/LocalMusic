@@ -5,7 +5,7 @@
   "apple": {
     "modules": [
       "PeakImportModule",
-      "PeakLyricsModule"
+      "PeakBackupModule"
     ],
     "appDelegateSubscribers": [
       "PeakImportAppDelegateSubscriber"

@@ -835,7 +835,53 @@ export function MusicProvider({ children }) {
     [songsById]
   );
 
+  const updateSongMetadata = useCallback(async (id, title, artist) => {
+    title = title.trim(); artist = artist.trim();
+    if (!title || title.length > 300 || artist.length > 300) throw new Error('Renseigne un titre (300 caractères maximum par champ).');
+    const current = songsRef.current;
+    if (!current.some(s => s.id === id)) throw new Error('Morceau introuvable.');
+    const updated = current.map(s => s.id === id ? {...s,title,artist:artist || 'Artiste inconnu',metadataEditedAt:new Date().toISOString()} : s);
+    await saveLibrary(updated);
+    songsRef.current=updated; setSongs(updated);
+    try { TrackPlayer.getQueue().forEach((item,index) => {
+      if(item.mediaId===id || item.extras?.localMusicSongId===id) TrackPlayer.updateMetadata(index,{title,artist:artist || 'Artiste inconnu'});
+    }); } catch { /* Metadata is durable; playback refresh is best effort. */ }
+  }, []);
+
+  const bulkSongs = useCallback(async (ids, action, targetId, sourceId) => {
+    if (importing) throw new Error('Attends la fin de l’import.');
+    const selected = new Set(ids), before = songsRef.current;
+    const picked = before.filter(s => selected.has(s.id));
+    if (!picked.length) return;
+    if (['add','move'].includes(action) && !playlists.some(p=>p.id===targetId)) throw new Error('Choisis une playlist.');
+    if (action==='move' && (!sourceId || sourceId===targetId)) throw new Error('Choisis une autre playlist de destination.');
+    const nextSongs = action==='delete' ? before.filter(s=>!selected.has(s.id)) : before;
+    const nextPlaylists = playlists.map(p => {
+      let songIds=p.songIds || [];
+      if(action==='delete' || (['move','remove'].includes(action) && p.id===sourceId)) songIds=songIds.filter(id=>!selected.has(id));
+      if(['add','move'].includes(action) && p.id===targetId) songIds=[...new Set([...songIds,...picked.map(s=>s.id)])];
+      return {...p,songIds};
+    });
+    setImporting(true);
+    try {
+      await savePlaylists(nextPlaylists);
+      try { await saveLibrary(nextSongs); }
+      catch(e) { await savePlaylists(playlists); throw e; }
+      songsRef.current=nextSongs;setSongs(nextSongs);setPlaylists(nextPlaylists);
+      if(action==='delete') {
+        // Remove queue entries backwards, preserving playback of unaffected tracks.
+        try { const queue=TrackPlayer.getQueue();
+          for(let i=queue.length-1;i>=0;i--) if(selected.has(queue[i].mediaId || queue[i].extras?.localMusicSongId)) TrackPlayer.removeMediaItem(i);
+          activeQueueIdsRef.current=activeQueueIdsRef.current.filter(id=>!selected.has(id));
+        } catch { TrackPlayer.pause();TrackPlayer.clear();activeQueueIdsRef.current=[]; }
+        for(const song of picked) await deleteSongFile(song);
+      }
+    } finally {setImporting(false);}
+  },[playlists,importing]);
+
   const value = {
+    updateSongMetadata,
+    bulkSongs,
     songs,
     playlists,
     loadingLibrary,

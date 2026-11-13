@@ -103,15 +103,18 @@ export function normalized(value) {
 }
 export function rankCandidates(candidates, target) {
   const title = normalized(target.title), artists = (target.artists || [target.artist]).map(normalized);
-  const versions = ['live', 'remix', 'cover', 'sped up', 'slowed', 'instrumental', 'karaoke'];
+  const versions = ['live', 'remix', 'cover', 'sped up', 'slowed', 'instrumental', 'karaoke', 'nightcore', 'acoustic', 'extended'];
   return candidates.map(candidate => {
     const haystack = ` ${normalized(candidate.title + ' ' + candidate.artist)} `;
     const titleMatch = haystack.includes(` ${title} `);
     const artistMatch = artists.every(artist => artist && haystack.includes(` ${artist} `));
     const delta = target.duration ? Math.abs(candidate.duration - target.duration) : Infinity;
     const differentVersion = versions.some(v => haystack.includes(` ${v} `) && !(` ${title} `).includes(` ${v} `));
-    const score = (titleMatch ? 4 : 0) + (artistMatch ? 3 : 0) + (delta <= 6 ? 3 : delta <= 15 ? 1 : 0) - (differentVersion ? 5 : 0) + (candidate.verifiedArtist && artistMatch ? 2 : 0);
-    return { ...candidate, score, confident: titleMatch && artistMatch && delta <= 6 && !differentVersion };
+    const audioVersion = /\b(official audio|audio only|topic|lyric video|lyrics)\b/.test(haystack);
+    const videoVersion = /\b(official video|music video|official music video)\b/.test(haystack);
+    const missingVersion = versions.some(v => (` ${title} `).includes(` ${v} `) && !haystack.includes(` ${v} `));
+    const score = (audioVersion ? 2 : 0) - (videoVersion ? 2 : 0) - (missingVersion ? 6 : 0) - (Number.isFinite(delta) && delta > 30 ? 4 : 0) + (titleMatch ? 4 : 0) + (artistMatch ? 3 : 0) + (delta <= 6 ? 3 : delta <= 15 ? 1 : 0) - (differentVersion ? 5 : 0) + (candidate.verifiedArtist && artistMatch ? 2 : 0);
+    return { ...candidate, score, matchReason: [titleMatch ? 'Titre correspondant' : 'Titre à vérifier', artistMatch ? 'Artiste correspondant' : 'Artiste à vérifier', Number.isFinite(delta) ? `Écart de durée : ${Math.round(delta)} s` : 'Durée source inconnue', audioVersion ? 'Version audio privilégiée' : videoVersion ? 'Clip vidéo' : '', differentVersion || missingVersion ? 'Version différente possible' : ''].filter(Boolean).join(' · '), confident: titleMatch && artistMatch && delta <= 6 && !differentVersion && !missingVersion };
   }).sort((a, b) => b.score - a.score);
 }
 export function automaticCandidate(ranked) {
@@ -142,10 +145,14 @@ export function soundcloudFormats(track) {
 }
 
 export function readableImportError(error) {
-  return String(error?.message || 'Import impossible.')
+  const detail = String(error?.message || 'Import impossible.')
     .replace(/^(?:UnexpectedException|Exception|Error):\s*/i, '')
     .replace(/\s*\(at\s+ExpoModulesCore\/[\s\S]*?\)\s*$/, '')
     .trim();
+  if (/network request failed|failed to fetch|network connection|hors ligne/i.test(detail)) return 'Connexion réseau interrompue. Vérifie le Wi-Fi ou les données mobiles, puis réessaie.';
+  if (/HTTP 429|\(429\)/i.test(detail)) return 'Le service limite temporairement les requêtes (429). Attends avant de réessayer.';
+  if (/HTTP 404|\(404\)/i.test(detail)) return 'Le morceau ou le flux est introuvable (404). Il a peut-être été retiré.';
+  return detail;
 }
 
 // Keep the original platform cover even when the audio comes from YouTube.

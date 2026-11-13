@@ -1,3 +1,6 @@
+import LibraryToolsModal from './src/components/LibraryToolsModal';
+import MetadataModal from './src/components/MetadataModal';
+import BackupModal from './src/components/BackupModal';
 import usePreference from './src/hooks/usePreference';
 import StorageModal from './src/components/StorageModal';
 import { sortSongs } from './src/services/songSort';
@@ -208,8 +211,10 @@ function ManageSongsModal({ visible, playlist, songs, onClose, onSave }) {
   );
 }
 
-function LibraryScreen() {
+function LibraryScreen({onRestored}) {
   const {
+    updateSongMetadata,
+    bulkSongs,
     songs,
     playlists,
     loadingLibrary,
@@ -236,6 +241,9 @@ function LibraryScreen() {
     clearPlaylistCover
   } = useMusic();
 
+  const [bulkVisible,setBulkVisible]=useState(false);
+  const [metadataSong,setMetadataSong]=useState(null);
+  const [backupVisible,setBackupVisible]=useState(false);
   const [storageVisible, setStorageVisible] = useState(false);
   const [tab, setTab] = useState('songs');
   const [songOrder, setSongOrder] = usePreference('songOrder', 'title');
@@ -304,6 +312,7 @@ function LibraryScreen() {
 
   const openSongOptions = (song, playlist = null) => {
     const actions = [
+      {text:'Modifier le titre et l’artiste',onPress:()=>setMetadataSong(song)},
       {
         text: 'Modifier la pochette',
         onPress: () => {
@@ -500,6 +509,7 @@ function LibraryScreen() {
       </View>
 
       <PlaybackModeBar />
+      <Pressable disabled={importing} onPress={()=>setBulkVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sélectionner plusieurs morceaux</Text></Pressable>
 
       {selectedPlaylistSongs.length === 0 ? (
         <View style={styles.center}>
@@ -560,7 +570,9 @@ function LibraryScreen() {
 
       <SegmentedControl value={tab} onChange={setTab} />
       <PlaybackModeBar />
+      <Pressable disabled={importing} onPress={()=>setBulkVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sélectionner plusieurs morceaux</Text></Pressable>
       <Pressable onPress={() => setStorageVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Stockage et cache</Text></Pressable>
+      <Pressable disabled={importing || loadingLibrary} onPress={()=>setBackupVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sauvegarder / restaurer</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Trier les morceaux" onPress={chooseSongOrder} style={{alignSelf:'flex-end',padding:12,marginHorizontal:16,minHeight:44}}><Text style={{color:'#b6a4ff',fontWeight:'700',fontSize:15}}>Trier : {songOrderLabels[songOrder]} ▾</Text></Pressable>
       <View style={styles.searchBar}>
         <TextInput
@@ -721,6 +733,9 @@ function LibraryScreen() {
         </View>
       )}
 
+      <LibraryToolsModal visible={bulkVisible} songs={selectedPlaylist ? selectedPlaylistSongs : filteredSongs} playlists={playlists} sourceId={selectedPlaylist?.id} onClose={()=>setBulkVisible(false)} onApply={bulkSongs}/>
+      <MetadataModal song={metadataSong} onClose={()=>setMetadataSong(null)} onSave={updateSongMetadata}/>
+      <BackupModal visible={backupVisible} available={!importing && !loadingLibrary} onClose={()=>setBackupVisible(false)} onRestored={onRestored}/>
       <StorageModal visible={storageVisible} onClose={() => setStorageVisible(false)} />
       <MiniPlayer />
       <PlayerModal />
@@ -751,6 +766,7 @@ function LibraryScreen() {
 }
 
 export default function App() {
+  const [revision,setRevision]=React.useState(0);
   const [ready, setReady] = React.useState(false);
   const [bootError, setBootError] = React.useState(null);
 
@@ -790,8 +806,8 @@ export default function App() {
   }
 
   return (
-    <MusicProvider>
-      <LibraryScreen />
+    <MusicProvider key={revision}>
+      <LibraryScreen onRestored={()=>setRevision(v=>v+1)} />
     </MusicProvider>
   );
 }

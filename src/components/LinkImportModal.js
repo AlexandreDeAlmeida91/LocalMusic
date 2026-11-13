@@ -77,7 +77,7 @@ export default function LinkImportModal({ visible, available=true, onClose, onIm
 
   }, []);
 
-  const start = async (saved = null) => {
+  const start = async (saved = null, onlyFailed = false) => {
     if (operation.current || !ready || !available) return;
     setError('');
     const links = saved ? saved.rows.map(r=>r.url) : [...new Set(input.split(/[;\n\r]+/).map(s=>s.trim()).filter(Boolean))];
@@ -129,7 +129,7 @@ export default function LinkImportModal({ visible, available=true, onClose, onIm
         await persist();
       }
       setRows([...journal.rows]);
-      const pending = journal.rows.map((row,i)=>({row,i})).filter(({row})=>pendingImportRows([row]).length);
+      const pending = journal.rows.map((row,i)=>({row,i})).filter(({row})=>onlyFailed ? row.status==='Échec' : pendingImportRows([row]).length);
       await runWorkers(pending, parallel ? 2 : 1, async ({row,i}) => {
         let jobID=row.jobID || `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`;
         let downloaded;
@@ -212,6 +212,12 @@ export default function LinkImportModal({ visible, available=true, onClose, onIm
     }
   };
 
+  const retryFailed = () => {
+    if (!resume) return;
+    const failed = resume.rows.filter(row => row.status === 'Échec');
+    if (failed.length) return start(resume,true);
+  };
+
   return <Modal visible={visible} animationType="slide" onRequestClose={() => busy ? cancel() : onClose()}>
     <SafeAreaView style={styles.page}>
       <View style={styles.header}>
@@ -235,6 +241,7 @@ export default function LinkImportModal({ visible, available=true, onClose, onIm
           <Switch value={allowYoutubeThumbnail} onValueChange={setAllowYoutubeThumbnail} disabled={busy} accessibilityLabel="Utiliser les miniatures YouTube en remplacement" />
         </View>
         <View style={{flexDirection:'row',alignItems:'center',gap:12}}><Text style={[styles.hint,{flex:1}]}>Deux téléchargements simultanés</Text><Switch value={parallel} onValueChange={setParallel} disabled={busy}/></View>
+        {!busy && resume?.rows.some(row=>row.status==='Échec') && <Pressable onPress={retryFailed} style={styles.primary}><Text style={styles.primaryText}>Réessayer uniquement les échecs ({resume.rows.filter(row=>row.status==='Échec').length})</Text></Pressable>}
         {!busy && resume && <View style={styles.card}><Text style={styles.hint}>{pendingImportRows(resume.rows).length} morceau(x) à reprendre. Les morceaux terminés sont conservés.</Text><Pressable onPress={()=>start(resume)} style={styles.button}><Text style={styles.link}>Reprendre l’import précédent</Text></Pressable><Pressable onPress={async()=>{try{await writeImportJournal({rows:[],expanded:true});setResume(null);}catch(e){setError(e.message);}}} style={styles.button}><Text style={styles.link}>Oublier la file précédente</Text></Pressable></View>}
         {!!backgroundMode && <Text style={styles.small}>{backgroundMode}</Text>}
         {!!error && <Text style={styles.error}>{error}</Text>}
@@ -252,6 +259,7 @@ export default function LinkImportModal({ visible, available=true, onClose, onIm
             onPress={() => choose.current?.(candidate.id)} accessibilityRole="button">
             <Text style={styles.title}>{candidate.title}</Text>
             <Text style={styles.hint}>{candidate.artist} · {Math.floor(candidate.duration / 60)}:{String(candidate.duration % 60).padStart(2, '0')}</Text>
+            {!!candidate.matchReason && <Text style={styles.small}>{candidate.matchReason}</Text>}
           </Pressable>)}
           <Pressable onPress={() => choose.current?.(null)} style={styles.button}><Text style={styles.link}>Ignorer ce morceau</Text></Pressable>
         </View>}

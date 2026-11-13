@@ -165,8 +165,8 @@ test('Spotify preparation performs metadata and YouTube search without a convers
   } });
   const prepared = await service.prepareMusicLink(`https://open.spotify.com/track/${spotifyID}`, new AbortController().signal, () => {});
   assert.equal(prepared.videoID, id);
-  assert.equal(requests.length, 2);
-  assert.deepEqual(requests.map(url => new URL(url).hostname), ['open.spotify.com', 'www.youtube.com']);
+  assert.equal(requests.length, 3);
+  assert.deepEqual(requests.map(url => new URL(url).hostname), ['open.spotify.com', 'www.youtube.com', 'www.youtube.com']);
 });
 test('short audio is removed before it can enter the library', async () => {
   const removed = [];
@@ -218,7 +218,7 @@ test('protected SoundCloud offers YouTube selection without requesting protected
   assert.equal(result.mediaURL, undefined);
   assert.equal(result.candidates[0].id, id);
   assert.match(result.matchReason, /choisir une version YouTube/);
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 3);
 });
 test('fresh SoundCloud page client replaces cached client', async () => {
   let client = 'a'.repeat(32);
@@ -424,7 +424,7 @@ test('YouTube fallback cleans decorative artist symbols before searching', async
     return response(url, searchHTML([{ id, title: 'VIRA Trap Nest Official Audio', artist: 'VIRA', time: '4:00' }]));
   });
   const result = await service.youtubeFallback({ metadata: { title: 'Trap Nest', artist: '☆ VIRA ★', duration: 240 } }, undefined, () => {});
-  assert.equal(query, 'vira trap nest official audio');
+  assert.equal(query, 'vira trap nest');
   assert.equal(result.videoID, id);
 });
 test('empty YouTube search retries without official audio and retains strict matching', async () => {
@@ -501,3 +501,12 @@ test('cleanup preserves missing/empty replacements, active originals and untrack
  await m.library.cleanupNormalizedOriginals([song]);
  assert.equal(m.files.get(base+song.audioPath),'corrected');
 });
+
+test('audio-only version outranks a video with matching artist title and duration',()=>{
+ const ranked=p.rankCandidates([{id:'audio',title:'Test Artist Northern Lights Official Audio',artist:'Test Artist',duration:180},{id:'clip',title:'Test Artist Northern Lights Official Video',artist:'Test Artist',duration:180}],{title:'Northern Lights',artist:'Test Artist',duration:180});
+ assert.equal(p.automaticCandidate(ranked)?.id,'audio');assert.match(ranked[0].matchReason,/audio privilégiée/);
+});
+test('original version never auto-matches a requested remix missing from candidate',()=>{
+ const ranked=p.rankCandidates([{id:'original',title:'Test Artist Northern Lights Official Audio',artist:'Test Artist',duration:180}],{title:'Northern Lights Remix',artist:'Test Artist',duration:180});assert.equal(p.automaticCandidate(ranked),null);
+});
+test('network and rate-limit errors explain a retry action',()=>{assert.match(p.readableImportError(Error('Network request failed')),/Connexion réseau/);assert.match(p.readableImportError(Error('HTTP 429')),/Attends/);});
