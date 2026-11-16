@@ -5,13 +5,15 @@ import BackupModal from './src/components/BackupModal';
 import usePreference from './src/hooks/usePreference';
 import StorageModal from './src/components/StorageModal';
 import { sortSongs } from './src/services/songSort';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   Modal,
   Pressable,
+  Platform,
+  useWindowDimensions,
   SafeAreaView,
   StatusBar,
   StyleSheet,
@@ -248,6 +250,26 @@ function LibraryScreen({onRestored}) {
   const [artworkScanVisible,setArtworkScanVisible]=useState(false);
   const [libraryMenuOpen,setLibraryMenuOpen]=useState(false);
   const [libraryMenuTop,setLibraryMenuTop]=useState(110);
+  const libraryMenuAnchor = useRef(null);
+  const pendingLibraryAction = useRef(null);
+  const {height: windowHeight} = useWindowDimensions();
+  const finishLibraryMenu = () => {
+    const action = pendingLibraryAction.current;
+    pendingLibraryAction.current = null;
+    action?.();
+  };
+  const closeLibraryMenu = (action = null) => {
+    pendingLibraryAction.current = action;
+    setLibraryMenuOpen(false);
+    if (Platform.OS !== 'ios') requestAnimationFrame(finishLibraryMenu);
+  };
+  const openLibraryMenu = () => {
+    // Window coordinates match the native modal, independently of SafeArea layout.
+    libraryMenuAnchor.current?.measureInWindow((x,y,width,height) => {
+      setLibraryMenuTop(Math.max(16, Math.min(y + height + 10, windowHeight - 280)));
+    });
+    setLibraryMenuOpen(true);
+  };
   const [storageVisible, setStorageVisible] = useState(false);
   const [tab, setTab] = useState('songs');
   const [songOrder, setSongOrder] = usePreference('songOrder', 'title');
@@ -553,13 +575,13 @@ function LibraryScreen({onRestored}) {
 
   const renderSongs = () => (
     <>
-      <View style={styles.header} onLayout={event => setLibraryMenuTop(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
+      <View style={styles.header}>
         <View style={{flex:1,minWidth:0,marginRight:10}}>
           <Text style={styles.heading} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Peak Music</Text>
         </View>
         <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Options de la bibliothèque"
-            accessibilityState={{expanded:libraryMenuOpen}} onPress={()=>setLibraryMenuOpen(value=>!value)}
+          <Pressable ref={libraryMenuAnchor} accessibilityRole="button" accessibilityLabel="Options de la bibliothèque"
+            accessibilityState={{expanded:libraryMenuOpen}} onPress={openLibraryMenu}
             style={({pressed})=>[styles.libraryMenuButton,pressed&&{opacity:0.65}]}>
             <Text style={{color:'#c6b9ff',fontSize:27,fontWeight:'800'}}>⋯</Text>
           </Pressable>
@@ -733,10 +755,12 @@ function LibraryScreen({onRestored}) {
         </View>
       )}
 
-      {libraryMenuOpen && !selectedPlaylist && tab === 'songs' && (
-        <View style={[StyleSheet.absoluteFillObject,{zIndex:100,elevation:20}]} accessibilityViewIsModal>
+      <Modal visible={libraryMenuOpen && !selectedPlaylist && tab === 'songs'} transparent
+        animationType="fade" presentationStyle="overFullScreen"
+        onRequestClose={()=>closeLibraryMenu()} onDismiss={finishLibraryMenu}>
+        <View style={{flex:1}} accessibilityViewIsModal>
           <Pressable accessibilityRole="button" accessibilityLabel="Fermer le menu"
-            onPress={()=>setLibraryMenuOpen(false)} style={StyleSheet.absoluteFillObject}/>
+            onPress={()=>closeLibraryMenu()} style={[StyleSheet.absoluteFillObject,{backgroundColor:'rgba(0,0,0,0.18)'}]}/>
           <View style={[styles.libraryMenu,{top:libraryMenuTop}]}>
             {[
               ['Sélectionner plusieurs morceaux',()=>setBulkVisible(true),importing||loadingLibrary],
@@ -745,14 +769,14 @@ function LibraryScreen({onRestored}) {
               ['Sauvegarder / restaurer',()=>setBackupVisible(true),importing||loadingLibrary]
             ].map(([label,action,disabled],index)=>(
               <Pressable key={label} accessibilityRole="button" disabled={disabled}
-                onPress={()=>{setLibraryMenuOpen(false);action();}}
+                onPress={()=>closeLibraryMenu(action)}
                 style={({pressed})=>[styles.libraryMenuItem,index>0&&{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#423960'},pressed&&{backgroundColor:'#30264d'},disabled&&{opacity:0.4}]}>
                 <Text style={{color:'#e5dfff',fontSize:15,fontWeight:'600'}}>{label}</Text>
               </Pressable>
             ))}
           </View>
         </View>
-      )}
+      </Modal>
 
       <LibraryToolsModal visible={bulkVisible} songs={selectedPlaylist ? selectedPlaylistSongs : filteredSongs} playlists={playlists} sourceId={selectedPlaylist?.id} onClose={()=>setBulkVisible(false)} onApply={bulkSongs}/>
       <MetadataModal song={metadataSong} onClose={()=>setMetadataSong(null)} onSave={updateSongMetadata}/>
