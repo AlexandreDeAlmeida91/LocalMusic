@@ -246,6 +246,8 @@ function LibraryScreen({onRestored}) {
   const [metadataSong,setMetadataSong]=useState(null);
   const [backupVisible,setBackupVisible]=useState(false);
   const [artworkScanVisible,setArtworkScanVisible]=useState(false);
+  const [libraryMenuOpen,setLibraryMenuOpen]=useState(false);
+  const [libraryMenuTop,setLibraryMenuTop]=useState(110);
   const [storageVisible, setStorageVisible] = useState(false);
   const [tab, setTab] = useState('songs');
   const [songOrder, setSongOrder] = usePreference('songOrder', 'title');
@@ -551,31 +553,26 @@ function LibraryScreen({onRestored}) {
 
   const renderSongs = () => (
     <>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.heading}>Peak Music</Text>
+      <View style={styles.header} onLayout={event => setLibraryMenuTop(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
+        <View style={{flex:1,minWidth:0,marginRight:10}}>
+          <Text style={styles.heading} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>Peak Music</Text>
         </View>
-
-        <Pressable
-          onPress={addMusic}
-          disabled={importing}
-          style={({ pressed }) => [
-            styles.addButton,
-            (pressed || importing) && styles.addButtonPressed
-          ]}
-        >
-          <Text style={styles.addButtonText}>
-            {importing ? '…' : '+'}
-          </Text>
-        </Pressable>
+        <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Options de la bibliothèque"
+            accessibilityState={{expanded:libraryMenuOpen}} onPress={()=>setLibraryMenuOpen(value=>!value)}
+            style={({pressed})=>[styles.libraryMenuButton,pressed&&{opacity:0.65}]}>
+            <Text style={{color:'#c6b9ff',fontSize:27,fontWeight:'800'}}>⋯</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Ajouter de la musique"
+            onPress={addMusic} disabled={importing}
+            style={({pressed})=>[styles.addButton,(pressed||importing)&&styles.addButtonPressed]}>
+            <Text style={styles.addButtonText}>{importing?'…':'+'}</Text>
+          </Pressable>
+        </View>
       </View>
 
       <SegmentedControl value={tab} onChange={setTab} />
       <PlaybackModeBar />
-      <Pressable disabled={importing} onPress={()=>setBulkVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sélectionner plusieurs morceaux</Text></Pressable>
-      <Pressable onPress={() => setStorageVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Stockage et cache</Text></Pressable>
-      <Pressable disabled={importing || loadingLibrary} onPress={()=>setArtworkScanVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Rechercher les pochettes</Text></Pressable>
-      <Pressable disabled={importing || loadingLibrary} onPress={()=>setBackupVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sauvegarder / restaurer</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Trier les morceaux" onPress={chooseSongOrder} style={{alignSelf:'flex-end',padding:12,marginHorizontal:16,minHeight:44}}><Text style={{color:'#b6a4ff',fontWeight:'700',fontSize:15}}>Trier : {songOrderLabels[songOrder]} ▾</Text></Pressable>
       <View style={styles.searchBar}>
         <TextInput
@@ -736,6 +733,27 @@ function LibraryScreen({onRestored}) {
         </View>
       )}
 
+      {libraryMenuOpen && !selectedPlaylist && tab === 'songs' && (
+        <View style={[StyleSheet.absoluteFillObject,{zIndex:100,elevation:20}]} accessibilityViewIsModal>
+          <Pressable accessibilityRole="button" accessibilityLabel="Fermer le menu"
+            onPress={()=>setLibraryMenuOpen(false)} style={StyleSheet.absoluteFillObject}/>
+          <View style={[styles.libraryMenu,{top:libraryMenuTop}]}>
+            {[
+              ['Sélectionner plusieurs morceaux',()=>setBulkVisible(true),importing||loadingLibrary],
+              ['Stockage et cache',()=>setStorageVisible(true),false],
+              ['Rechercher les pochettes',()=>setArtworkScanVisible(true),importing||loadingLibrary],
+              ['Sauvegarder / restaurer',()=>setBackupVisible(true),importing||loadingLibrary]
+            ].map(([label,action,disabled],index)=>(
+              <Pressable key={label} accessibilityRole="button" disabled={disabled}
+                onPress={()=>{setLibraryMenuOpen(false);action();}}
+                style={({pressed})=>[styles.libraryMenuItem,index>0&&{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#423960'},pressed&&{backgroundColor:'#30264d'},disabled&&{opacity:0.4}]}>
+                <Text style={{color:'#e5dfff',fontSize:15,fontWeight:'600'}}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+
       <LibraryToolsModal visible={bulkVisible} songs={selectedPlaylist ? selectedPlaylistSongs : filteredSongs} playlists={playlists} sourceId={selectedPlaylist?.id} onClose={()=>setBulkVisible(false)} onApply={bulkSongs}/>
       <MetadataModal song={metadataSong} onClose={()=>setMetadataSong(null)} onSave={updateSongMetadata}/>
       <ArtworkScanModal visible={artworkScanVisible} onClose={()=>setArtworkScanVisible(false)}/>
@@ -851,6 +869,16 @@ const styles = StyleSheet.create({
     letterSpacing: -1.1,
     color: '#ffffff'
   },
+  libraryMenuButton: {
+    width:44,height:44,borderRadius:22,alignItems:'center',justifyContent:'center',
+    backgroundColor:'#201b38',borderWidth:1,borderColor:'#49406b'
+  },
+  libraryMenu: {
+    position:'absolute',right:18,width:290,maxWidth:'92%',borderRadius:18,
+    backgroundColor:'#1c192e',borderWidth:1,borderColor:'#49406b',overflow:'hidden',
+    shadowColor:'#000',shadowOpacity:0.3,shadowRadius:16,shadowOffset:{width:0,height:8}
+  },
+  libraryMenuItem: {paddingHorizontal:18,paddingVertical:17,minHeight:52,justifyContent:'center'},
   addButton: {
     width: 52,
     height: 52,
