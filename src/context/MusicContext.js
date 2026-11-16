@@ -20,6 +20,7 @@ import {
   useProgress
 } from '@rntp/player';
 import {
+  downloadSongArtwork,
   repairStoredSong,
   deleteSongFile,
   commitDownloadedSong,
@@ -589,6 +590,42 @@ export function MusicProvider({ children }) {
     }
   }, [playerReady]);
 
+  const applyScannedArtwork = useCallback(async (song, candidates, signal) => {
+    const current = songsRef.current.find(item => item.id === song.id);
+    if (!current || current.customArtworkPath || current.artworkPath !== song.artworkPath) return false;
+    let result;
+    let committed = false;
+    try {
+      // Unique destination: an unsuccessful save must never overwrite an existing cover.
+      for (const candidate of candidates) {
+        if (signal?.aborted) return false;
+        result = await downloadSongArtwork([candidate], `${song.id}-scan-${Date.now()}`);
+        if (result) break;
+      }
+      if (!result || signal?.aborted) return false;
+      const latest = songsRef.current.find(item => item.id === song.id);
+      if (!latest || latest.customArtworkPath || latest.artworkPath !== song.artworkPath) return false;
+      const artworkUri = resolveLocalPath(result.path);
+      const updated = songsRef.current.map(item => item.id === song.id ? {
+        ...item, artworkPath: result.path, artworkUri, artworkSource: result.source,
+        artworkUpdatedAt: new Date().toISOString()
+      } : item);
+      await saveLibrary(updated);
+      committed = true;
+      songsRef.current = updated;
+      setSongs(updated);
+      updateNativeArtwork(song.id, artworkUri);
+      // Remove only an unreferenced previous downloaded cover after persistence succeeds.
+      if (/^Artwork\/[a-zA-Z0-9_-]+-online\.(jpg|png|webp)$/.test(latest.artworkPath || '') &&
+          !updated.some(item => item.artworkPath === latest.artworkPath || item.customArtworkPath === latest.artworkPath)) {
+        await FileSystem.deleteAsync(resolveLocalPath(latest.artworkPath), {idempotent:true}).catch(() => {});
+      }
+      return true;
+    } finally {
+      if (result && !committed) await FileSystem.deleteAsync(resolveLocalPath(result.path), {idempotent:true}).catch(() => {});
+    }
+  }, [updateNativeArtwork]);
+
   const changeSongArtwork = useCallback(async (song, source) => {
     let newPath = null;
     try {
@@ -916,6 +953,7 @@ export function MusicProvider({ children }) {
     searchSongLyrics,
     addOrReplaceLyrics,
     removeLyrics,
+    applyScannedArtwork,
     changeSongArtwork,
     removeSongArtwork,
     playSong,

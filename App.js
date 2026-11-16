@@ -1,3 +1,4 @@
+import ArtworkScanModal from './src/components/ArtworkScanModal';
 import LibraryToolsModal from './src/components/LibraryToolsModal';
 import MetadataModal from './src/components/MetadataModal';
 import BackupModal from './src/components/BackupModal';
@@ -244,6 +245,7 @@ function LibraryScreen({onRestored}) {
   const [bulkVisible,setBulkVisible]=useState(false);
   const [metadataSong,setMetadataSong]=useState(null);
   const [backupVisible,setBackupVisible]=useState(false);
+  const [artworkScanVisible,setArtworkScanVisible]=useState(false);
   const [storageVisible, setStorageVisible] = useState(false);
   const [tab, setTab] = useState('songs');
   const [songOrder, setSongOrder] = usePreference('songOrder', 'title');
@@ -572,6 +574,7 @@ function LibraryScreen({onRestored}) {
       <PlaybackModeBar />
       <Pressable disabled={importing} onPress={()=>setBulkVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sélectionner plusieurs morceaux</Text></Pressable>
       <Pressable onPress={() => setStorageVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Stockage et cache</Text></Pressable>
+      <Pressable disabled={importing || loadingLibrary} onPress={()=>setArtworkScanVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Rechercher les pochettes</Text></Pressable>
       <Pressable disabled={importing || loadingLibrary} onPress={()=>setBackupVisible(true)} style={{padding:12,marginHorizontal:16}}><Text style={{color:'#b6a4ff'}}>Sauvegarder / restaurer</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Trier les morceaux" onPress={chooseSongOrder} style={{alignSelf:'flex-end',padding:12,marginHorizontal:16,minHeight:44}}><Text style={{color:'#b6a4ff',fontWeight:'700',fontSize:15}}>Trier : {songOrderLabels[songOrder]} ▾</Text></Pressable>
       <View style={styles.searchBar}>
@@ -735,6 +738,7 @@ function LibraryScreen({onRestored}) {
 
       <LibraryToolsModal visible={bulkVisible} songs={selectedPlaylist ? selectedPlaylistSongs : filteredSongs} playlists={playlists} sourceId={selectedPlaylist?.id} onClose={()=>setBulkVisible(false)} onApply={bulkSongs}/>
       <MetadataModal song={metadataSong} onClose={()=>setMetadataSong(null)} onSave={updateSongMetadata}/>
+      <ArtworkScanModal visible={artworkScanVisible} onClose={()=>setArtworkScanVisible(false)}/>
       <BackupModal visible={backupVisible} available={!importing && !loadingLibrary} onClose={()=>setBackupVisible(false)} onRestored={onRestored}/>
       <StorageModal visible={storageVisible} onClose={() => setStorageVisible(false)} />
       <MiniPlayer />

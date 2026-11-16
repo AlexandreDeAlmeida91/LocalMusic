@@ -348,3 +348,47 @@ export async function endBackgroundImport(success) { await engine?.endBackground
 export function subscribeBackgroundImport(listener) {
   return engine?.addListener?.('onBackgroundImportState',listener);
 }
+
+// Metadata-only lookup: never resolve or download an audio stream.
+export async function artworkCandidatesForSong(song, allowYoutubeThumbnail, signal) {
+  const links = [];
+  for (const raw of [song.sourceUrl,
+    /^spotify:[a-zA-Z0-9]{22}$/.test(song.sourceKey || '') ? `https://open.spotify.com/track/${song.sourceKey.slice(8)}` : null,
+    /^https:\/\/soundcloud\.com\//.test(song.sourceKey || '') ? song.sourceKey : null]) {
+    try { const link = parseMusicLink(raw); if (!link.playlist && !links.some(l => l.url === link.url)) links.push(link); } catch {}
+  }
+  let videoID = song.youtubeID;
+  const candidates = [], errors = [];
+  for (let link of links) {
+    checkCancelled(signal);
+    try {
+      if (link.provider === 'redirect') {
+        let destination;
+        await requestText(link.url, signal, response => { destination = response.url; });
+        link = parseMusicLink(destination);
+        if (link.playlist) continue;
+      }
+      if (link.provider === 'youtube') { videoID ||= link.id; continue; }
+      let metadata;
+      if (link.provider === 'spotify') {
+        metadata = spotifyMetadata(await requestText(`https://open.spotify.com/embed/track/${link.id}`, signal), link.id);
+      } else if (link.provider === 'soundcloud') {
+        const html = await requestText(link.url, signal);
+        // Cover metadata is usable even when the audio policy is restricted.
+        let track = embeddedJSON(html, 'window.__sc_hydration =')?.find?.(entry => entry.hydratable === 'sound')?.data;
+        if (!track) track = JSON.parse(await requestText(`https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(link.url)}&client_id=${await clientID(html, signal)}`, signal));
+        if (!track?.id || (track.kind && track.kind !== 'track')) throw new Error('Informations SoundCloud indisponibles.');
+        metadata = {artworkUrl: track.artwork_url};
+      }
+      if (metadata) candidates.push(...importArtworkCandidates({...link, metadata}, false));
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      errors.push(readableImportError(error));
+    }
+  }
+  checkCancelled(signal);
+  candidates.sort((a,b) => (a.source === 'spotify' ? 0 : 1) - (b.source === 'spotify' ? 0 : 1));
+  candidates.push(...importArtworkCandidates({videoID}, allowYoutubeThumbnail));
+  return {candidates: candidates.filter((c,i,a) => a.findIndex(v => v.url === c.url) === i), errors,
+    hasLink: links.length > 0 || /^[a-zA-Z0-9_-]{11}$/.test(videoID || '')};
+}
