@@ -3,6 +3,8 @@ import {
   Modal,
   Pressable,
   SafeAreaView,
+  ScrollView,
+  useWindowDimensions,
   StyleSheet,
   Text,
   View
@@ -39,6 +41,9 @@ export default function PlayerModal() {
     setVolume
   } = useMusic();
 
+  const {width} = useWindowDimensions();
+  const [contentHeight, setContentHeight] = useState(650);
+  const artworkSize = Math.max(120, Math.min(300, width - 56, contentHeight - 430));
   const [sliderValue, setSliderValue] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const [lyricsVisible, setLyricsVisible] = useState(false);
@@ -96,11 +101,12 @@ export default function PlayerModal() {
           )}
         </View>
 
-        <View style={styles.content}>
+        <ScrollView style={{flex:1}} contentContainerStyle={styles.content}
+          onLayout={event => setContentHeight(event.nativeEvent.layout.height)} showsVerticalScrollIndicator={false}>
           <View style={styles.artworkGlow}>
             <Artwork
               uri={currentSong.artworkUri}
-              size={300}
+              size={artworkSize}
               radius={26}
             />
           </View>
@@ -198,7 +204,7 @@ export default function PlayerModal() {
             />
             <Text style={styles.speaker}>🔊</Text>
           </View>
-        </View>
+        </ScrollView>
 
         <LyricsModal
           visible={lyricsVisible}
@@ -280,12 +286,13 @@ const styles = StyleSheet.create({
     color: '#9892b7'
   },
   content: {
-    flex: 1,
-    paddingHorizontal: 28
+    flexGrow: 1,
+    paddingHorizontal: 28,
+    paddingBottom: 24
   },
   artworkGlow: {
     alignSelf: 'center',
-    marginTop: 28,
+    marginTop: 18,
     borderRadius: 28,
     shadowColor: '#6b4cff',
     shadowOpacity: 0.34,
@@ -293,7 +300,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 }
   },
   metadata: {
-    marginTop: 30
+    marginTop: 20
   },
   title: {
     fontSize: 28,
@@ -335,7 +342,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 34
+    gap: 24
   },
   sideControl: {
     width: 60,
@@ -377,10 +384,10 @@ const styles = StyleSheet.create({
     marginLeft: 2
   },
   modeWrap: {
-    marginTop: 24
+    marginTop: 18
   },
   volumeRow: {
-    marginTop: 28,
+    marginTop: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8
@@ -390,7 +397,8 @@ const styles = StyleSheet.create({
   },
   volumeSlider: {
     flex: 1,
-    height: 34
+    height: 44,
+    minWidth: 0
   },
   pressed: {
     opacity: 0.70

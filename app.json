@@ -2,7 +2,7 @@
   "expo": {
     "name": "Peak Music",
     "slug": "local-music",
-    "version": "1.8.19",
+    "version": "1.8.20",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "ios": {

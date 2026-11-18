@@ -298,6 +298,14 @@ export function MusicProvider({ children }) {
     }
   }, [playerReady, repeatMode]);
 
+  // Preferences load asynchronously; keep native modes aligned even if a queue
+  // was started before the saved settings arrived.
+  useEffect(() => {
+    if (!playerReady) return;
+    TrackPlayer.setRepeatMode(nativeRepeatMode(repeatMode));
+    TrackPlayer.setShuffleEnabled(shuffleEnabled);
+  }, [playerReady, repeatMode, shuffleEnabled]);
+
   const findImportedSong = useCallback(candidate => findExistingImport(songsRef.current, candidate), []);
 
   const acceptDownloadedSong = useCallback(async (download) => {

@@ -37,6 +37,12 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm install
 
+      - name: Test native repeat sequencing
+        run: |
+          node scripts/test-native-repeat.cjs
+          xcrun swiftc /tmp/peak-repeat-test.swift -o /tmp/peak-repeat-test
+          /tmp/peak-repeat-test
+
       - name: Align Expo SDK 57 dependencies
         run: npx expo install --fix
 
